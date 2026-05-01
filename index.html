@@ -3,256 +3,460 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WA Flow Manager — WhatsApp Management Portal</title>
-  <meta name="description" content="Portal profesional para gestionar WhatsApp usando TextMeBot API.">
+  <title>WA Flow Manager</title>
+  <meta name="description" content="Portal profesional de gestión WhatsApp.">
   <link rel="stylesheet" href="src/styles.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ── Login Screen ─────────────────────────── */
+    /* ══════════════════════════════════════════════
+       RESET & BASE
+    ══════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --font: 'Inter', -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      --bg-login: #0d1117;
+      --glass: rgba(255,255,255,0.06);
+      --glass-border: rgba(255,255,255,0.10);
+      --glass-hover: rgba(255,255,255,0.10);
+      --text-white: #f0f6fc;
+      --text-muted-login: rgba(240,246,252,0.45);
+      --green: #25D366;
+      --green-dark: #1EB354;
+      --green-glow: rgba(37,211,102,0.35);
+      --danger: #f85149;
+      --radius-lg: 20px;
+      --radius-md: 12px;
+      --shadow-lg: 0 32px 80px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    /* ══════════════════════════════════════════════
+       LOGIN SCREEN - Apple-style
+    ══════════════════════════════════════════════ */
     #loginScreen {
-      position: fixed; inset: 0; z-index: 9000;
-      background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F4C2A 100%);
+      position: fixed; inset: 0; z-index: 9999;
       display: flex; align-items: center; justify-content: center;
+      font-family: var(--font);
+      overflow: hidden;
     }
     #loginScreen.hidden { display: none; }
 
-    .login-box {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.12);
-      backdrop-filter: blur(20px);
-      border-radius: 24px;
-      padding: 48px 40px;
-      width: 100%; max-width: 420px;
-      box-shadow: 0 24px 60px rgba(0,0,0,.5);
+    /* Fondo animado tipo macOS Sonoma */
+    .login-bg {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 80%, rgba(37,211,102,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 70% 50% at 80% 20%, rgba(37,99,235,0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, #0d1117 0%, #0b1120 100%);
+      background-attachment: fixed;
     }
+    /* Efecto de grano sutil */
+    .login-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    /* Card principal */
+    .login-card {
+      position: relative; z-index: 1;
+      background: rgba(22,27,34,0.85);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border-radius: 28px;
+      padding: 48px 44px;
+      width: min(420px, calc(100vw - 32px));
+      box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.08);
+      animation: cardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(24px) scale(0.96); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Logo */
     .login-logo {
-      text-align: center; margin-bottom: 32px;
+      text-align: center;
+      margin-bottom: 36px;
     }
-    .login-logo .icon {
-      width: 64px; height: 64px; background: #25D366;
-      border-radius: 20px; display: inline-flex; align-items: center;
-      justify-content: center; font-size: 32px; margin-bottom: 16px;
-      box-shadow: 0 8px 24px rgba(37,211,102,.4);
+    .login-icon-wrap {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 72px; height: 72px;
+      background: linear-gradient(145deg, #25D366, #1EB354);
+      border-radius: 22px;
+      box-shadow: 0 8px 32px var(--green-glow), 0 2px 8px rgba(0,0,0,0.4);
+      margin-bottom: 18px;
+      font-size: 36px;
+      animation: iconFloat 3s ease-in-out infinite;
     }
-    .login-logo h1 { color: #fff; font-size: 24px; font-weight: 700; }
-    .login-logo p  { color: rgba(255,255,255,.5); font-size: 13px; margin-top: 4px; }
+    @keyframes iconFloat {
+      0%,100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+    .login-title {
+      color: var(--text-white);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      margin-bottom: 4px;
+    }
+    .login-subtitle {
+      color: var(--text-muted-login);
+      font-size: 13px;
+      font-weight: 400;
+    }
 
-    .login-field { margin-bottom: 18px; }
-    .login-field label { display: block; color: rgba(255,255,255,.7); font-size: 12.5px; font-weight: 600; margin-bottom: 8px; }
-    .login-field input {
-      width: 100%; padding: 12px 16px;
-      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
-      border-radius: 10px; color: #fff; font-size: 14px; font-family: inherit;
-      outline: none; transition: border-color .2s;
+    /* Campos */
+    .lf { margin-bottom: 16px; }
+    .lf label {
+      display: flex; align-items: center; gap: 6px;
+      color: rgba(240,246,252,0.65);
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.3px; text-transform: uppercase;
+      margin-bottom: 8px;
     }
-    .login-field input::placeholder { color: rgba(255,255,255,.3); }
-    .login-field input:focus { border-color: #25D366; background: rgba(255,255,255,.12); }
-    .login-field .hint { font-size: 11px; color: rgba(255,255,255,.35); margin-top: 5px; }
+    .lf input, .lf textarea {
+      width: 100%;
+      padding: 13px 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      color: var(--text-white);
+      font-size: 15px;
+      font-family: var(--font);
+      font-weight: 400;
+      outline: none;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+      -webkit-appearance: none;
+    }
+    .lf input::placeholder { color: rgba(255,255,255,0.25); }
+    .lf input:focus {
+      border-color: var(--green);
+      background: rgba(37,211,102,0.07);
+      box-shadow: 0 0 0 3px rgba(37,211,102,0.12);
+    }
+    .lf .hint {
+      color: var(--text-muted-login);
+      font-size: 11.5px;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
 
+    /* Separador con expand */
+    .first-time-section {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height .4s cubic-bezier(0.4,0,0.2,1), opacity .3s;
+      opacity: 0;
+    }
+    .first-time-section.open {
+      max-height: 200px;
+      opacity: 1;
+    }
+
+    /* Botón principal */
     .login-btn {
-      width: 100%; padding: 14px; background: #25D366; border: none;
-      border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700;
-      cursor: pointer; font-family: inherit; margin-top: 8px;
-      transition: background .2s, transform .1s;
+      width: 100%; padding: 15px;
+      background: linear-gradient(135deg, #25D366 0%, #1EB354 100%);
+      border: none; border-radius: 14px;
+      color: #fff; font-size: 15.5px; font-weight: 600;
+      cursor: pointer; font-family: var(--font);
+      margin-top: 8px;
+      letter-spacing: -0.2px;
+      box-shadow: 0 4px 20px var(--green-glow);
+      transition: all .2s;
+      position: relative; overflow: hidden;
     }
-    .login-btn:hover { background: #1DA851; }
-    .login-btn:active { transform: scale(.98); }
-    .login-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .login-btn::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(rgba(255,255,255,0.12), transparent);
+      border-radius: inherit;
+    }
+    .login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 28px var(--green-glow); }
+    .login-btn:active { transform: scale(0.98); }
+    .login-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
+    /* Error box */
     .login-error {
-      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3);
-      border-radius: 8px; padding: 10px 14px; color: #FCA5A5;
-      font-size: 12.5px; margin-top: 12px; display: none;
+      display: none;
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: rgba(248,81,73,0.12);
+      border: 1px solid rgba(248,81,73,0.25);
+      border-radius: 10px;
+      color: #ff9492;
+      font-size: 13px;
+      line-height: 1.5;
+      animation: shake 0.3s ease;
     }
-    .login-divider { text-align: center; color: rgba(255,255,255,.2); font-size: 11px; margin: 20px 0; }
-    .login-footer { text-align: center; color: rgba(255,255,255,.25); font-size: 11px; margin-top: 24px; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
 
-    /* ── User Badge in Sidebar ────────────────── */
-    .sidebar-user {
-      padding: 12px 16px; border-top: 1px solid var(--border);
-      display: flex; align-items: center; gap: 10px; margin-top: auto;
+    .login-divider {
+      text-align: center;
+      color: var(--text-muted-login);
+      font-size: 12.5px;
+      margin-top: 20px;
     }
-    .sidebar-user .avatar {
-      width: 32px; height: 32px; border-radius: 50%; background: var(--accent-green);
+    .login-divider a {
+      color: var(--green); text-decoration: none; font-weight: 500;
+    }
+    .login-divider a:hover { text-decoration: underline; }
+
+    .login-footer {
+      text-align: center;
+      color: rgba(240,246,252,0.2);
+      font-size: 11px;
+      margin-top: 24px;
+    }
+
+    /* Spinner dentro del botón */
+    .btn-spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ══════════════════════════════════════════════
+       SIDEBAR USER BADGE
+    ══════════════════════════════════════════════ */
+    .sidebar-user-section {
+      margin-top: auto;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .sidebar-avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: linear-gradient(135deg, #25D366, #1EB354);
       display: flex; align-items: center; justify-content: center;
       color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(37,211,102,0.4);
     }
-    .sidebar-user .user-info { flex: 1; min-width: 0; }
-    .sidebar-user .user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sidebar-user .user-role { font-size: 11px; color: var(--text-muted); }
-    .logout-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 4px; }
-    .logout-btn:hover { color: var(--danger); }
+    .sidebar-user-info { flex: 1; min-width: 0; }
+    .sidebar-user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-user-role { font-size: 11px; color: var(--text-muted); }
+    .sidebar-logout {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); font-size: 16px; padding: 4px 6px;
+      border-radius: 6px; transition: all .15s;
+    }
+    .sidebar-logout:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
   </style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════ -->
-<!-- PANTALLA DE LOGIN                           -->
-<!-- ═══════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════ -->
+<!-- LOGIN SCREEN                                       -->
+<!-- ══════════════════════════════════════════════════ -->
 <div id="loginScreen">
-  <div class="login-box">
+  <div class="login-bg"></div>
+  <div class="login-card">
+
     <div class="login-logo">
-      <div class="icon">💬</div>
-      <h1>WA Flow Manager</h1>
-      <p>Portal de gestión de WhatsApp</p>
+      <div class="login-icon-wrap">💬</div>
+      <div class="login-title">WA Flow Manager</div>
+      <div class="login-subtitle">Portal de gestión de WhatsApp</div>
     </div>
 
-    <div class="login-field">
+    <div class="lf">
       <label>👤 Usuario</label>
-      <input type="text" id="loginUser" placeholder="Tu nombre de usuario" autocomplete="username">
-    </div>
-    <div class="login-field">
-      <label>🔑 Contraseña / Token de acceso</label>
-      <input type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password" onkeypress="if(event.key==='Enter')Auth.login()">
-      <div class="hint">Esta es la clave APP_SECRET_TOKEN que configuraste en Apps Script</div>
-    </div>
-    <div class="login-field" id="firstTimeFields" style="display:none">
-      <label>🔗 URL de Google Apps Script</label>
-      <input type="url" id="loginUrl" placeholder="https://script.google.com/macros/s/.../exec">
-      <div class="hint">Solo se pide la primera vez. Se guarda automáticamente.</div>
+      <input type="text" id="loginUser" placeholder="Tu nombre" autocomplete="username"
+             onkeypress="if(event.key==='Enter')Auth.login()">
     </div>
 
-    <button class="login-btn" id="loginBtn" onclick="Auth.login()">Ingresar al portal</button>
+    <div class="lf">
+      <label>🔑 Contraseña (Token)</label>
+      <input type="password" id="loginPass" placeholder="APP_SECRET_TOKEN"
+             autocomplete="current-password" onkeypress="if(event.key==='Enter')Auth.login()">
+      <div class="hint">La clave que guardaste en Apps Script → Propiedades del script</div>
+    </div>
+
+    <!-- Primera vez / cambiar URL -->
+    <div class="first-time-section" id="firstTimeSection">
+      <div class="lf" style="margin-top:4px">
+        <label>🔗 URL de Google Apps Script</label>
+        <input type="url" id="loginUrl" placeholder="https://script.google.com/macros/s/.../exec"
+               autocomplete="off">
+        <div class="hint">Solo se pide la primera vez. Se guarda automáticamente en tu navegador.</div>
+      </div>
+    </div>
+
+    <button class="login-btn" id="loginBtn" onclick="Auth.login()">
+      Ingresar al portal
+    </button>
+
     <div class="login-error" id="loginError"></div>
 
-    <div class="login-divider">¿Primera vez? <a href="#" onclick="Auth.toggleFirstTime()" style="color:#25D366">Configura tu conexión</a></div>
+    <div class="login-divider">
+      ¿Primera vez? <a href="#" onclick="Auth.toggleUrl(event)">Configura tu conexión</a>
+    </div>
+
     <div class="login-footer">WA Flow Manager v1.0 · Powered by TextMeBot</div>
   </div>
 </div>
 
-<!-- Toast Container -->
+<!-- Toast -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Mobile Sidebar Toggle -->
+<!-- Mobile toggle -->
 <button class="sidebar-toggle" id="sidebarToggle">☰</button>
 
-<!-- Sidebar -->
+<!-- ══════════════════════════════════════════════════ -->
+<!-- SIDEBAR                                            -->
+<!-- ══════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <h1><span class="logo-icon">💬</span> WA Flow<br><small>Manager v1.0</small></h1>
   </div>
+
   <div class="sidebar-nav">
     <div class="nav-section">Principal</div>
-    <a class="nav-item active" data-section="dashboard" href="#dashboard"><span class="nav-icon">📊</span>Dashboard</a>
-    <a class="nav-item" data-section="inbox" href="#inbox"><span class="nav-icon">📥</span>Inbox</a>
-    <a class="nav-item" data-section="conversations" href="#conversations"><span class="nav-icon">💬</span>Conversaciones<span class="nav-badge" id="pendingBadge" style="display:none"></span></a>
-    <a class="nav-item" data-section="send" href="#send"><span class="nav-icon">📤</span>Enviar mensaje</a>
+    <a class="nav-item active" data-section="dashboard" href="#dashboard">
+      <span class="nav-icon">📊</span>Dashboard
+    </a>
+    <a class="nav-item" data-section="inbox" href="#inbox">
+      <span class="nav-icon">📥</span>Inbox
+    </a>
+    <a class="nav-item" data-section="conversations" href="#conversations">
+      <span class="nav-icon">💬</span>Conversaciones
+    </a>
+    <a class="nav-item" data-section="send" href="#send">
+      <span class="nav-icon">📤</span>Enviar mensaje
+    </a>
 
     <div class="nav-section">Automatización</div>
-    <a class="nav-item" data-section="scheduler" href="#scheduler"><span class="nav-icon">⏰</span>Programador</a>
-    <a class="nav-item" data-section="automations" href="#automations"><span class="nav-icon">🤖</span>Automatizaciones</a>
-    <a class="nav-item" data-section="campaigns" href="#campaigns"><span class="nav-icon">📢</span>Campañas</a>
-    <a class="nav-item" data-section="templates" href="#templates"><span class="nav-icon">📝</span>Plantillas</a>
+    <a class="nav-item" data-section="scheduler" href="#scheduler">
+      <span class="nav-icon">⏰</span>Programador
+    </a>
+    <a class="nav-item" data-section="automations" href="#automations">
+      <span class="nav-icon">🤖</span>Automatizaciones
+    </a>
+    <a class="nav-item" data-section="campaigns" href="#campaigns">
+      <span class="nav-icon">📢</span>Campañas
+    </a>
+    <a class="nav-item" data-section="templates" href="#templates">
+      <span class="nav-icon">📝</span>Plantillas
+    </a>
 
     <div class="nav-section">Gestión</div>
-    <a class="nav-item" data-section="contacts" href="#contacts"><span class="nav-icon">👥</span>Contactos</a>
-    <a class="nav-item" data-section="analytics" href="#analytics"><span class="nav-icon">📈</span>Analítica</a>
-    <a class="nav-item" data-section="settings" href="#settings"><span class="nav-icon">⚙️</span>Configuración</a>
+    <a class="nav-item" data-section="contacts" href="#contacts">
+      <span class="nav-icon">👥</span>Contactos
+    </a>
+    <a class="nav-item" data-section="analytics" href="#analytics">
+      <span class="nav-icon">📈</span>Analítica
+    </a>
+    <a class="nav-item" data-section="settings" href="#settings">
+      <span class="nav-icon">⚙️</span>Configuración
+    </a>
   </div>
 
-  <!-- User badge at bottom -->
-  <div class="sidebar-user" id="sidebarUser">
-    <div class="avatar" id="userAvatar">U</div>
-    <div class="user-info">
-      <div class="user-name" id="userName">Usuario</div>
-      <div class="user-role">Administrador</div>
+  <!-- Badge de usuario -->
+  <div class="sidebar-user-section" id="sidebarUser" style="display:none">
+    <div class="sidebar-avatar" id="userAvatar">U</div>
+    <div class="sidebar-user-info">
+      <div class="sidebar-user-name" id="userName">Usuario</div>
+      <div class="sidebar-user-role">Administrador</div>
     </div>
-    <button class="logout-btn" title="Cerrar sesión" onclick="Auth.logout()">⏻</button>
+    <button class="sidebar-logout" title="Cerrar sesión" onclick="Auth.logout()">⏻</button>
   </div>
 </nav>
 
 <!-- Mobile Bottom Nav -->
 <div class="mobile-nav">
   <div class="mobile-nav-inner">
-    <div class="mobile-nav-item active" data-section="dashboard" onclick="location.hash='dashboard'"><span class="nav-icon">📊</span>Home</div>
-    <div class="mobile-nav-item" data-section="inbox" onclick="location.hash='inbox'"><span class="nav-icon">📥</span>Inbox</div>
-    <div class="mobile-nav-item" data-section="conversations" onclick="location.hash='conversations'"><span class="nav-icon">💬</span>Chat</div>
-    <div class="mobile-nav-item" data-section="send" onclick="location.hash='send'"><span class="nav-icon">📤</span>Enviar</div>
-    <div class="mobile-nav-item" data-section="settings" onclick="location.hash='settings'"><span class="nav-icon">⚙️</span>Config</div>
+    <div class="mobile-nav-item active" data-section="dashboard" onclick="location.hash='dashboard'">
+      <span class="nav-icon">📊</span>Home
+    </div>
+    <div class="mobile-nav-item" data-section="inbox" onclick="location.hash='inbox'">
+      <span class="nav-icon">📥</span>Inbox
+    </div>
+    <div class="mobile-nav-item" data-section="send" onclick="location.hash='send'">
+      <span class="nav-icon">📤</span>Enviar
+    </div>
+    <div class="mobile-nav-item" data-section="contacts" onclick="location.hash='contacts'">
+      <span class="nav-icon">👥</span>Contactos
+    </div>
+    <div class="mobile-nav-item" data-section="settings" onclick="location.hash='settings'">
+      <span class="nav-icon">⚙️</span>Config
+    </div>
   </div>
 </div>
 
-<!-- Main Content -->
+<!-- ══════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT                                       -->
+<!-- ══════════════════════════════════════════════════ -->
 <main class="main-content" id="mainContent">
 
-  <!-- Modal -->
+  <!-- Modal overlay -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
-      <div class="modal-header"><h3></h3><button class="modal-close" onclick="Modal.close()">✕</button></div>
+      <div class="modal-header">
+        <h3></h3>
+        <button class="modal-close" onclick="Modal.close()">✕</button>
+      </div>
       <div class="modal-body"></div>
       <div class="modal-footer"></div>
     </div>
   </div>
 
-  <!-- Dashboard -->
   <div class="section active" id="section-dashboard">
     <div class="page-header"><h2>Dashboard</h2><p>Resumen general del sistema</p></div>
     <div id="dashboardContent"></div>
   </div>
-
-  <!-- Inbox -->
   <div class="section" id="section-inbox">
-    <div class="page-header"><h2>Inbox</h2><p>Mensajes recibidos de WhatsApp</p></div>
+    <div class="page-header"><h2>Inbox</h2><p>Mensajes recibidos</p></div>
     <div id="inboxContent"></div>
   </div>
-
-  <!-- Conversations -->
   <div class="section" id="section-conversations">
-    <div class="page-header"><h2>Conversaciones</h2><p>Historial de chat por contacto</p></div>
+    <div class="page-header"><h2>Conversaciones</h2><p>Historial por contacto</p></div>
     <div id="conversationsContent"></div>
   </div>
-
-  <!-- Send -->
   <div class="section" id="section-send">
     <div class="page-header"><h2>Enviar mensaje</h2><p>Envío manual de mensajes WhatsApp</p></div>
     <div id="sendContent"></div>
   </div>
-
-  <!-- Scheduler -->
   <div class="section" id="section-scheduler">
     <div class="page-header"><h2>Programador</h2><p>Programa envíos automáticos</p></div>
     <div id="schedulerContent"></div>
   </div>
-
-  <!-- Automations -->
   <div class="section" id="section-automations">
-    <div class="page-header"><h2>Automatizaciones</h2><p>Reglas de respuesta automática por palabra clave</p></div>
+    <div class="page-header"><h2>Automatizaciones</h2><p>Reglas de respuesta automática</p></div>
     <div id="automationsContent"></div>
   </div>
-
-  <!-- Campaigns -->
   <div class="section" id="section-campaigns">
     <div class="page-header"><h2>Campañas</h2><p>Envíos masivos segmentados</p></div>
     <div id="campaignsContent"></div>
   </div>
-
-  <!-- Templates -->
   <div class="section" id="section-templates">
     <div class="page-header"><h2>Plantillas</h2><p>Mensajes reutilizables con variables</p></div>
     <div id="templatesContent"></div>
   </div>
-
-  <!-- Contacts -->
   <div class="section" id="section-contacts">
-    <div class="page-header"><h2>Contactos</h2><p>Directorio de contactos de WhatsApp</p></div>
+    <div class="page-header"><h2>Contactos</h2><p>Directorio de contactos WhatsApp</p></div>
     <div id="contactsContent"></div>
   </div>
-
-  <!-- Analytics -->
   <div class="section" id="section-analytics">
-    <div class="page-header"><h2>Analítica</h2><p>Métricas y estadísticas del sistema</p></div>
+    <div class="page-header"><h2>Analítica</h2><p>Métricas y estadísticas</p></div>
     <div id="analyticsContent"></div>
   </div>
-
-  <!-- Settings -->
   <div class="section" id="section-settings">
     <div class="page-header"><h2>Configuración</h2><p>Conecta y configura tu sistema</p></div>
     <div id="settingsContent"></div>
   </div>
-
 </main>
 
-<!-- Scripts -->
+<!-- Scripts — orden importante -->
 <script src="src/api.js"></script>
 <script src="src/app.js"></script>
 <script src="src/components/dashboard.js"></script>
