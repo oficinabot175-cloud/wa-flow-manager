@@ -61,8 +61,11 @@ window.Sections.dashboard = {
         </div>
       `;
 
-      document.getElementById('pendingBadge').textContent = stats.pending_conversations || '';
-      document.getElementById('pendingBadge').style.display = stats.pending_conversations > 0 ? 'inline' : 'none';
+      const badge = document.getElementById('pendingBadge');
+      if (badge) {
+        badge.textContent = stats.pending_conversations || '';
+        badge.style.display = stats.pending_conversations > 0 ? 'inline' : 'none';
+      }
 
     } catch (err) {
       container.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error al cargar datos</h3><p>${escapeHtml(err.message)}</p><button class="btn btn-secondary mt-16" onclick="Sections.dashboard.render()">Reintentar</button></div></div>`;

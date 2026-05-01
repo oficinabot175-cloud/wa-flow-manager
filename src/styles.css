@@ -287,6 +287,24 @@ select.form-control{cursor:pointer}
 .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 
+/* ── Dark mode form/table fixes ── */
+.form-control { color: var(--text); background: var(--bg-card); }
+.form-control::placeholder { color: var(--text-muted); }
+select.form-control option { background: var(--bg-card); color: var(--text); }
+th { background: var(--bg-sidebar); color: var(--text-secondary); }
+tr:hover td { background: rgba(37,211,102,.04); }
+.filter-select { background: var(--bg-card); color: var(--text); }
+.search-input { background: var(--bg-card); color: var(--text); }
+.btn-secondary { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+.btn-secondary:hover { background: var(--border); }
+.mobile-nav { background: var(--bg-sidebar); }
+.sidebar-toggle { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+.chat-messages { background: var(--bg); }
+.chat-input-area { background: var(--bg-card); }
+.modal-header, .modal-footer { background: var(--bg-card); }
+.preview-box { background: rgba(37,211,102,.08); border-color: rgba(37,211,102,.2); color: var(--text); }
+
+
 /* ── Responsive ── */
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%)}

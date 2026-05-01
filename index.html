@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WA Flow Manager</title>
-  <meta name="description" content="Portal profesional de gestión WhatsApp.">
+  <title>Super WhatsApp by Carlos Bardales</title>
+  <meta name="description" content="Super WhatsApp — Portal profesional de gestión WhatsApp por Carlos Bardales.">
   <link rel="stylesheet" href="src/styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -15,7 +15,19 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --font: 'Inter', -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
-      --bg-login: #0d1117;
+      /* Dark theme override */
+    --bg: #0F1117;
+    --bg-card: #161B22;
+    --bg-sidebar: #0D1117;
+    --text: #E6EDF3;
+    --text-secondary: #8B949E;
+    --text-muted: #6E7681;
+    --border: #21262D;
+    --border-light: #1C2128;
+    --shadow-sm: 0 1px 4px rgba(0,0,0,.3),0 2px 8px rgba(0,0,0,.2);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.4),0 1px 4px rgba(0,0,0,.3);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,.6),0 4px 12px rgba(0,0,0,.4);
+    --bg-login: #0d1117;
       --glass: rgba(255,255,255,0.06);
       --glass-border: rgba(255,255,255,0.10);
       --glass-hover: rgba(255,255,255,0.10);
@@ -265,8 +277,8 @@
 
     <div class="login-logo">
       <div class="login-icon-wrap">💬</div>
-      <div class="login-title">WA Flow Manager</div>
-      <div class="login-subtitle">Portal de gestión de WhatsApp</div>
+      <div class="login-title">Super WhatsApp</div>
+      <div class="login-subtitle">by Carlos Bardales · Portal de gestión profesional</div>
     </div>
 
     <div class="lf">
@@ -302,7 +314,7 @@
       ¿Primera vez? <a href="#" onclick="Auth.toggleUrl(event)">Configura tu conexión</a>
     </div>
 
-    <div class="login-footer">WA Flow Manager v1.0 · Powered by TextMeBot</div>
+    <div class="login-footer">Super WhatsApp v1.0 by Carlos Bardales · Powered by TextMeBot</div>
   </div>
 </div>
 
@@ -316,8 +328,8 @@
 <!-- SIDEBAR                                            -->
 <!-- ══════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
-  <div class="sidebar-brand">
-    <h1><span class="logo-icon">💬</span> WA Flow<br><small>Manager v1.0</small></h1>
+    <div class="sidebar-brand">
+      <h1><span class="logo-icon">⚡</span> Super WA<br><small>by Carlos Bardales</small></h1>
   </div>
 
   <div class="sidebar-nav">
