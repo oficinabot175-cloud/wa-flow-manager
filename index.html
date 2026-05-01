@@ -4,11 +4,121 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WA Flow Manager — WhatsApp Management Portal</title>
-  <meta name="description" content="Portal profesional para gestionar WhatsApp usando TextMeBot API. Envía, recibe, automatiza y programa mensajes.">
+  <meta name="description" content="Portal profesional para gestionar WhatsApp usando TextMeBot API.">
   <link rel="stylesheet" href="src/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+  <style>
+    /* ── Login Screen ─────────────────────────── */
+    #loginScreen {
+      position: fixed; inset: 0; z-index: 9000;
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F4C2A 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #loginScreen.hidden { display: none; }
+
+    .login-box {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 48px 40px;
+      width: 100%; max-width: 420px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.5);
+    }
+    .login-logo {
+      text-align: center; margin-bottom: 32px;
+    }
+    .login-logo .icon {
+      width: 64px; height: 64px; background: #25D366;
+      border-radius: 20px; display: inline-flex; align-items: center;
+      justify-content: center; font-size: 32px; margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(37,211,102,.4);
+    }
+    .login-logo h1 { color: #fff; font-size: 24px; font-weight: 700; }
+    .login-logo p  { color: rgba(255,255,255,.5); font-size: 13px; margin-top: 4px; }
+
+    .login-field { margin-bottom: 18px; }
+    .login-field label { display: block; color: rgba(255,255,255,.7); font-size: 12.5px; font-weight: 600; margin-bottom: 8px; }
+    .login-field input {
+      width: 100%; padding: 12px 16px;
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
+      border-radius: 10px; color: #fff; font-size: 14px; font-family: inherit;
+      outline: none; transition: border-color .2s;
+    }
+    .login-field input::placeholder { color: rgba(255,255,255,.3); }
+    .login-field input:focus { border-color: #25D366; background: rgba(255,255,255,.12); }
+    .login-field .hint { font-size: 11px; color: rgba(255,255,255,.35); margin-top: 5px; }
+
+    .login-btn {
+      width: 100%; padding: 14px; background: #25D366; border: none;
+      border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer; font-family: inherit; margin-top: 8px;
+      transition: background .2s, transform .1s;
+    }
+    .login-btn:hover { background: #1DA851; }
+    .login-btn:active { transform: scale(.98); }
+    .login-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+    .login-error {
+      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3);
+      border-radius: 8px; padding: 10px 14px; color: #FCA5A5;
+      font-size: 12.5px; margin-top: 12px; display: none;
+    }
+    .login-divider { text-align: center; color: rgba(255,255,255,.2); font-size: 11px; margin: 20px 0; }
+    .login-footer { text-align: center; color: rgba(255,255,255,.25); font-size: 11px; margin-top: 24px; }
+
+    /* ── User Badge in Sidebar ────────────────── */
+    .sidebar-user {
+      padding: 12px 16px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px; margin-top: auto;
+    }
+    .sidebar-user .avatar {
+      width: 32px; height: 32px; border-radius: 50%; background: var(--accent-green);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+    }
+    .sidebar-user .user-info { flex: 1; min-width: 0; }
+    .sidebar-user .user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-user .user-role { font-size: 11px; color: var(--text-muted); }
+    .logout-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 4px; }
+    .logout-btn:hover { color: var(--danger); }
+  </style>
 </head>
 <body>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- PANTALLA DE LOGIN                           -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="icon">💬</div>
+      <h1>WA Flow Manager</h1>
+      <p>Portal de gestión de WhatsApp</p>
+    </div>
+
+    <div class="login-field">
+      <label>👤 Usuario</label>
+      <input type="text" id="loginUser" placeholder="Tu nombre de usuario" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label>🔑 Contraseña / Token de acceso</label>
+      <input type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password" onkeypress="if(event.key==='Enter')Auth.login()">
+      <div class="hint">Esta es la clave APP_SECRET_TOKEN que configuraste en Apps Script</div>
+    </div>
+    <div class="login-field" id="firstTimeFields" style="display:none">
+      <label>🔗 URL de Google Apps Script</label>
+      <input type="url" id="loginUrl" placeholder="https://script.google.com/macros/s/.../exec">
+      <div class="hint">Solo se pide la primera vez. Se guarda automáticamente.</div>
+    </div>
+
+    <button class="login-btn" id="loginBtn" onclick="Auth.login()">Ingresar al portal</button>
+    <div class="login-error" id="loginError"></div>
+
+    <div class="login-divider">¿Primera vez? <a href="#" onclick="Auth.toggleFirstTime()" style="color:#25D366">Configura tu conexión</a></div>
+    <div class="login-footer">WA Flow Manager v1.0 · Powered by TextMeBot</div>
+  </div>
+</div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -39,6 +149,16 @@
     <a class="nav-item" data-section="analytics" href="#analytics"><span class="nav-icon">📈</span>Analítica</a>
     <a class="nav-item" data-section="settings" href="#settings"><span class="nav-icon">⚙️</span>Configuración</a>
   </div>
+
+  <!-- User badge at bottom -->
+  <div class="sidebar-user" id="sidebarUser">
+    <div class="avatar" id="userAvatar">U</div>
+    <div class="user-info">
+      <div class="user-name" id="userName">Usuario</div>
+      <div class="user-role">Administrador</div>
+    </div>
+    <button class="logout-btn" title="Cerrar sesión" onclick="Auth.logout()">⏻</button>
+  </div>
 </nav>
 
 <!-- Mobile Bottom Nav -->
@@ -53,7 +173,7 @@
 </div>
 
 <!-- Main Content -->
-<main class="main-content">
+<main class="main-content" id="mainContent">
 
   <!-- Modal -->
   <div class="modal-overlay" id="modalOverlay">
