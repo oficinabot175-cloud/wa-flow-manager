@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WA Flow Manager — WhatsApp Management Portal</title>
+  <meta name="description" content="Portal profesional para gestionar WhatsApp usando TextMeBot API. Envía, recibe, automatiza y programa mensajes.">
+  <link rel="stylesheet" href="src/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+</head>
+<body>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Mobile Sidebar Toggle -->
+<button class="sidebar-toggle" id="sidebarToggle">☰</button>
+
+<!-- Sidebar -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <h1><span class="logo-icon">💬</span> WA Flow<br><small>Manager v1.0</small></h1>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">Principal</div>
+    <a class="nav-item active" data-section="dashboard" href="#dashboard"><span class="nav-icon">📊</span>Dashboard</a>
+    <a class="nav-item" data-section="inbox" href="#inbox"><span class="nav-icon">📥</span>Inbox</a>
+    <a class="nav-item" data-section="conversations" href="#conversations"><span class="nav-icon">💬</span>Conversaciones<span class="nav-badge" id="pendingBadge" style="display:none"></span></a>
+    <a class="nav-item" data-section="send" href="#send"><span class="nav-icon">📤</span>Enviar mensaje</a>
+
+    <div class="nav-section">Automatización</div>
+    <a class="nav-item" data-section="scheduler" href="#scheduler"><span class="nav-icon">⏰</span>Programador</a>
+    <a class="nav-item" data-section="automations" href="#automations"><span class="nav-icon">🤖</span>Automatizaciones</a>
+    <a class="nav-item" data-section="campaigns" href="#campaigns"><span class="nav-icon">📢</span>Campañas</a>
+    <a class="nav-item" data-section="templates" href="#templates"><span class="nav-icon">📝</span>Plantillas</a>
+
+    <div class="nav-section">Gestión</div>
+    <a class="nav-item" data-section="contacts" href="#contacts"><span class="nav-icon">👥</span>Contactos</a>
+    <a class="nav-item" data-section="analytics" href="#analytics"><span class="nav-icon">📈</span>Analítica</a>
+    <a class="nav-item" data-section="settings" href="#settings"><span class="nav-icon">⚙️</span>Configuración</a>
+  </div>
+</nav>
+
+<!-- Mobile Bottom Nav -->
+<div class="mobile-nav">
+  <div class="mobile-nav-inner">
+    <div class="mobile-nav-item active" data-section="dashboard" onclick="location.hash='dashboard'"><span class="nav-icon">📊</span>Home</div>
+    <div class="mobile-nav-item" data-section="inbox" onclick="location.hash='inbox'"><span class="nav-icon">📥</span>Inbox</div>
+    <div class="mobile-nav-item" data-section="conversations" onclick="location.hash='conversations'"><span class="nav-icon">💬</span>Chat</div>
+    <div class="mobile-nav-item" data-section="send" onclick="location.hash='send'"><span class="nav-icon">📤</span>Enviar</div>
+    <div class="mobile-nav-item" data-section="settings" onclick="location.hash='settings'"><span class="nav-icon">⚙️</span>Config</div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<main class="main-content">
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header"><h3></h3><button class="modal-close" onclick="Modal.close()">✕</button></div>
+      <div class="modal-body"></div>
+      <div class="modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="section active" id="section-dashboard">
+    <div class="page-header"><h2>Dashboard</h2><p>Resumen general del sistema</p></div>
+    <div id="dashboardContent"></div>
+  </div>
+
+  <!-- Inbox -->
+  <div class="section" id="section-inbox">
+    <div class="page-header"><h2>Inbox</h2><p>Mensajes recibidos de WhatsApp</p></div>
+    <div id="inboxContent"></div>
+  </div>
+
+  <!-- Conversations -->
+  <div class="section" id="section-conversations">
+    <div class="page-header"><h2>Conversaciones</h2><p>Historial de chat por contacto</p></div>
+    <div id="conversationsContent"></div>
+  </div>
+
+  <!-- Send -->
+  <div class="section" id="section-send">
+    <div class="page-header"><h2>Enviar mensaje</h2><p>Envío manual de mensajes WhatsApp</p></div>
+    <div id="sendContent"></div>
+  </div>
+
+  <!-- Scheduler -->
+  <div class="section" id="section-scheduler">
+    <div class="page-header"><h2>Programador</h2><p>Programa envíos automáticos</p></div>
+    <div id="schedulerContent"></div>
+  </div>
+
+  <!-- Automations -->
+  <div class="section" id="section-automations">
+    <div class="page-header"><h2>Automatizaciones</h2><p>Reglas de respuesta automática por palabra clave</p></div>
+    <div id="automationsContent"></div>
+  </div>
+
+  <!-- Campaigns -->
+  <div class="section" id="section-campaigns">
+    <div class="page-header"><h2>Campañas</h2><p>Envíos masivos segmentados</p></div>
+    <div id="campaignsContent"></div>
+  </div>
+
+  <!-- Templates -->
+  <div class="section" id="section-templates">
+    <div class="page-header"><h2>Plantillas</h2><p>Mensajes reutilizables con variables</p></div>
+    <div id="templatesContent"></div>
+  </div>
+
+  <!-- Contacts -->
+  <div class="section" id="section-contacts">
+    <div class="page-header"><h2>Contactos</h2><p>Directorio de contactos de WhatsApp</p></div>
+    <div id="contactsContent"></div>
+  </div>
+
+  <!-- Analytics -->
+  <div class="section" id="section-analytics">
+    <div class="page-header"><h2>Analítica</h2><p>Métricas y estadísticas del sistema</p></div>
+    <div id="analyticsContent"></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="section" id="section-settings">
+    <div class="page-header"><h2>Configuración</h2><p>Conecta y configura tu sistema</p></div>
+    <div id="settingsContent"></div>
+  </div>
+
+</main>
+
+<!-- Scripts -->
+<script src="src/api.js"></script>
+<script src="src/app.js"></script>
+<script src="src/components/dashboard.js"></script>
+<script src="src/components/inbox.js"></script>
+<script src="src/components/conversations.js"></script>
+<script src="src/components/send.js"></script>
+<script src="src/components/scheduler.js"></script>
+<script src="src/components/automations.js"></script>
+<script src="src/components/campaigns.js"></script>
+<script src="src/components/templates.js"></script>
+<script src="src/components/contacts.js"></script>
+<script src="src/components/analytics.js"></script>
+<script src="src/components/settings.js"></script>
+
+</body>
+</html>
