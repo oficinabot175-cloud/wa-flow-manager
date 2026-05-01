@@ -63,6 +63,7 @@ class WaApi {
 
   // Contacts
   async getContacts(filters = {}) { return this.request('getContacts', filters); }
+  async createContact(data) { return this.request('createContact', data); }
   async updateContact(contactId, updates) { return this.request('updateContact', { contact_id: contactId, ...updates }); }
 
   // Conversations

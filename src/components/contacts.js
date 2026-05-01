@@ -13,6 +13,7 @@ window.Sections.contacts = {
       c.innerHTML = `
         <div class="toolbar">
           <input type="text" class="search-input" id="contactSearch" placeholder="Buscar por número o nombre..." oninput="Sections.contacts.filter()">
+          <button class="btn btn-primary" onclick="Sections.contacts.showCreateForm()">➕ Nuevo contacto</button>
           <button class="btn btn-secondary btn-sm" onclick="Sections.contacts.render()">🔄</button>
         </div>
         <div class="card"><div class="table-wrap"><table>
@@ -43,6 +44,32 @@ window.Sections.contacts = {
     document.querySelectorAll('.contact-row').forEach(r => {
       r.style.display = !q || (r.dataset.search||'').includes(q) ? '' : 'none';
     });
+  },
+
+  showCreateForm() {
+    Modal.open('Nuevo contacto', `
+      <div class="form-group"><label>Teléfono (con código de país)</label><input class="form-control" id="newCtPhone" placeholder="51999888777"></div>
+      <div class="form-group"><label>Nombre WhatsApp</label><input class="form-control" id="newCtWaName" placeholder="Nombre real en WA"></div>
+      <div class="form-group"><label>Nombre para mostrar</label><input class="form-control" id="newCtName" placeholder="Nombre interno"></div>
+      <div class="form-group"><label>Etiquetas</label><input class="form-control" id="newCtTags" placeholder="cliente, interesado"></div>
+      <div class="form-group"><label>Notas</label><textarea class="form-control" id="newCtNotes" rows="2"></textarea></div>
+    `, `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button><button class="btn btn-primary" onclick="Sections.contacts.saveNew()">Crear contacto</button>`);
+  },
+
+  async saveNew() {
+    const data = {
+      phone: document.getElementById('newCtPhone').value.replace(/\D/g, ''),
+      whatsapp_name: document.getElementById('newCtWaName').value,
+      display_name: document.getElementById('newCtName').value,
+      tags: document.getElementById('newCtTags').value,
+      notes: document.getElementById('newCtNotes').value
+    };
+    if (!data.phone) { Toast.error('El teléfono es obligatorio'); return; }
+    try {
+      const res = await api.createContact(data);
+      if (res.success) { Toast.success('Contacto creado'); Modal.close(); this.render(); }
+      else Toast.error(res.error);
+    } catch (err) { Toast.error(err.message); }
   },
 
   editModal(id, name, tags, notes, dnc) {
