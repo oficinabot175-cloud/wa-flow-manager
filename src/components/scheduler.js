@@ -73,8 +73,10 @@ window.Sections.scheduler = {
       this._contacts = []; this._templates = [];
     }
 
-    const dt      = new Date(Date.now() + 3600000);
-    const dtLocal = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    // Round to next 5-min slot + 15 min buffer
+    const dtRaw    = new Date(Date.now() + 15 * 60000);
+    const rounded  = new Date(Math.ceil(dtRaw.getTime() / (5 * 60000)) * (5 * 60000));
+    const dtLocal  = new Date(rounded.getTime() - rounded.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
     const contactItems = this._contacts.length > 0
       ? this._contacts.map(ct => `
@@ -166,8 +168,12 @@ window.Sections.scheduler = {
 
       <div class="form-row">
         <div class="form-group">
-          <label>Fecha y hora de inicio</label>
-          <input type="datetime-local" class="form-control" id="schDatetime" value="${dtLocal}">
+          <label>📅 Fecha y hora de inicio</label>
+          <input type="datetime-local" class="form-control" id="schDatetime" value="${dtLocal}" step="300">
+          <div class="form-hint" style="margin-top:6px;padding:8px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;color:#D97706">
+            ⚠️ <strong>El envío puede llegar hasta 10 min después</strong> por limitación de Google Apps Script.
+            Programa con al menos 10 min de anticipación para mayor precisión.
+          </div>
         </div>
         <div class="form-group">
           <label>Recurrencia</label>
@@ -263,9 +269,14 @@ window.Sections.scheduler = {
     if (!recipients) { Toast.error('Selecciona o ingresa al menos un destinatario'); return; }
     if (!message)    { Toast.error('El mensaje es obligatorio'); return; }
 
+    // ⚡ Compensación inteligente: restamos 10 min para compensar el retraso del trigger de GAS
+    // El usuario ve "7:15" pero guardamos "7:05" → el mensaje llega aprox a las 7:15
     let startDatetime;
-    try { startDatetime = dtVal ? new Date(dtVal).toISOString() : new Date().toISOString(); }
-    catch { startDatetime = new Date().toISOString(); }
+    try {
+      const userDate = dtVal ? new Date(dtVal) : new Date();
+      const adjusted = new Date(userDate.getTime() - 10 * 60 * 1000); // -10 minutos
+      startDatetime = adjusted.toISOString();
+    } catch { startDatetime = new Date().toISOString(); }
 
     try {
       const res = await api.createSchedule({
