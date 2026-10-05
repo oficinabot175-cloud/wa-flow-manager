@@ -2,473 +2,174 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Super WhatsApp by Carlos Bardales</title>
-  <meta name="description" content="Super WhatsApp — Portal profesional de gestión WhatsApp por Carlos Bardales.">
-  <link rel="stylesheet" href="src/styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WA Power</title>
+  <meta name="description" content="WA Power — CRM y operación de WhatsApp">
+  <meta name="theme-color" content="#0D5C58">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230D5C58'/%3E%3Cpath d='M9 20v-3M14 20v-6M19 20v-9' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='24' cy='10' r='2.4' fill='%23E3A21A'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    /* ══════════════════════════════════════════════
-       RESET & BASE
-    ══════════════════════════════════════════════ */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --font: 'Inter', -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
-      --bg-login: #060C18;
-      --glass: rgba(255,255,255,0.06);
-      --glass-border: rgba(79,142,247,0.20);
-      --text-white: #E8EFFE;
-      --text-muted-login: rgba(139,163,204,0.7);
-      --green: #25D366;
-      --green-dark: #1EB354;
-      --green-glow: rgba(37,211,102,0.35);
-      --danger: #F87171;
-      --radius-lg: 20px;
-      --radius-md: 12px;
-      --shadow-lg: 0 32px 80px rgba(0,0,0,0.7), 0 8px 24px rgba(0,0,0,0.5);
-    }
-
-    /* ══════════════════════════════════════════════
-       LOGIN SCREEN - Apple-style
-    ══════════════════════════════════════════════ */
-    #loginScreen {
-      position: fixed; inset: 0; z-index: 9999;
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font);
-      overflow: hidden;
-    }
-    #loginScreen.hidden { display: none; }
-
-    /* Fondo animado tipo macOS Sonoma */
-    .login-bg {
-      position: absolute; inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 20% 80%, rgba(37,211,102,0.18) 0%, transparent 60%),
-        radial-gradient(ellipse 70% 50% at 80% 20%, rgba(37,99,235,0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 100% 100% at 50% 50%, #0d1117 0%, #0b1120 100%);
-      background-attachment: fixed;
-    }
-    /* Efecto de grano sutil */
-    .login-bg::after {
-      content: '';
-      position: absolute; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-      pointer-events: none;
-    }
-
-    /* Card principal */
-    .login-card {
-      position: relative; z-index: 1;
-      background: rgba(22,27,34,0.85);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(40px) saturate(180%);
-      -webkit-backdrop-filter: blur(40px) saturate(180%);
-      border-radius: 28px;
-      padding: 48px 44px;
-      width: min(420px, calc(100vw - 32px));
-      box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.08);
-      animation: cardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
-    }
-    @keyframes cardIn {
-      from { opacity: 0; transform: translateY(24px) scale(0.96); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* Logo */
-    .login-logo {
-      text-align: center;
-      margin-bottom: 36px;
-    }
-    .login-icon-wrap {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 72px; height: 72px;
-      background: linear-gradient(145deg, #25D366, #1EB354);
-      border-radius: 22px;
-      box-shadow: 0 8px 32px var(--green-glow), 0 2px 8px rgba(0,0,0,0.4);
-      margin-bottom: 18px;
-      font-size: 36px;
-      animation: iconFloat 3s ease-in-out infinite;
-    }
-    @keyframes iconFloat {
-      0%,100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
-    }
-    .login-title {
-      color: var(--text-white);
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.4px;
-      margin-bottom: 4px;
-    }
-    .login-subtitle {
-      color: var(--text-muted-login);
-      font-size: 13px;
-      font-weight: 400;
-    }
-
-    /* Campos */
-    .lf { margin-bottom: 16px; }
-    .lf label {
-      display: flex; align-items: center; gap: 6px;
-      color: rgba(240,246,252,0.65);
-      font-size: 12px; font-weight: 600;
-      letter-spacing: 0.3px; text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-    .lf input, .lf textarea {
-      width: 100%;
-      padding: 13px 16px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.10);
-      border-radius: 12px;
-      color: var(--text-white);
-      font-size: 15px;
-      font-family: var(--font);
-      font-weight: 400;
-      outline: none;
-      transition: border-color .2s, background .2s, box-shadow .2s;
-      -webkit-appearance: none;
-    }
-    .lf input::placeholder { color: rgba(255,255,255,0.25); }
-    .lf input:focus {
-      border-color: var(--green);
-      background: rgba(37,211,102,0.07);
-      box-shadow: 0 0 0 3px rgba(37,211,102,0.12);
-    }
-    .lf .hint {
-      color: var(--text-muted-login);
-      font-size: 11.5px;
-      margin-top: 6px;
-      line-height: 1.5;
-    }
-
-    /* Separador con expand */
-    .first-time-section {
-      overflow: hidden;
-      max-height: 0;
-      transition: max-height .4s cubic-bezier(0.4,0,0.2,1), opacity .3s;
-      opacity: 0;
-    }
-    .first-time-section.open {
-      max-height: 200px;
-      opacity: 1;
-    }
-
-    /* Botón principal */
-    .login-btn {
-      width: 100%; padding: 15px;
-      background: linear-gradient(135deg, #25D366 0%, #1EB354 100%);
-      border: none; border-radius: 14px;
-      color: #fff; font-size: 15.5px; font-weight: 600;
-      cursor: pointer; font-family: var(--font);
-      margin-top: 8px;
-      letter-spacing: -0.2px;
-      box-shadow: 0 4px 20px var(--green-glow);
-      transition: all .2s;
-      position: relative; overflow: hidden;
-    }
-    .login-btn::before {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(rgba(255,255,255,0.12), transparent);
-      border-radius: inherit;
-    }
-    .login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 28px var(--green-glow); }
-    .login-btn:active { transform: scale(0.98); }
-    .login-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
-
-    /* Error box */
-    .login-error {
-      display: none;
-      margin-top: 14px;
-      padding: 12px 16px;
-      background: rgba(248,81,73,0.12);
-      border: 1px solid rgba(248,81,73,0.25);
-      border-radius: 10px;
-      color: #ff9492;
-      font-size: 13px;
-      line-height: 1.5;
-      animation: shake 0.3s ease;
-    }
-    @keyframes shake {
-      0%,100% { transform: translateX(0); }
-      25% { transform: translateX(-6px); }
-      75% { transform: translateX(6px); }
-    }
-
-    .login-divider {
-      text-align: center;
-      color: var(--text-muted-login);
-      font-size: 12.5px;
-      margin-top: 20px;
-    }
-    .login-divider a {
-      color: var(--green); text-decoration: none; font-weight: 500;
-    }
-    .login-divider a:hover { text-decoration: underline; }
-
-    .login-footer {
-      text-align: center;
-      color: rgba(240,246,252,0.2);
-      font-size: 11px;
-      margin-top: 24px;
-    }
-
-    /* Spinner dentro del botón */
-    .btn-spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-      vertical-align: middle; margin-right: 8px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ══════════════════════════════════════════════
-       SIDEBAR USER BADGE
-    ══════════════════════════════════════════════ */
-    .sidebar-user-section {
-      margin-top: auto;
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
-      display: flex; align-items: center; gap: 10px;
-    }
-    .sidebar-avatar {
-      width: 34px; height: 34px; border-radius: 50%;
-      background: linear-gradient(135deg, #25D366, #1EB354);
-      display: flex; align-items: center; justify-content: center;
-      color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
-      box-shadow: 0 2px 8px rgba(37,211,102,0.4);
-    }
-    .sidebar-user-info { flex: 1; min-width: 0; }
-    .sidebar-user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sidebar-user-role { font-size: 11px; color: var(--text-muted); }
-    .sidebar-logout {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-muted); font-size: 16px; padding: 4px 6px;
-      border-radius: 6px; transition: all .15s;
-    }
-    .sidebar-logout:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
-  </style>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════ -->
-<!-- LOGIN SCREEN                                       -->
-<!-- ══════════════════════════════════════════════════ -->
-<div id="loginScreen">
-  <div class="login-bg"></div>
-  <div class="login-card">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-desk" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/><path d="M19 20a3 3 0 0 1-3 2h-3"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6 6 0 0 1 3.5 5.5"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l3 3 5-6"/></symbol>
+    <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1z"/><path d="M17 8.5a5 5 0 0 1 0 7"/><path d="M7 15l1.5 5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L4.5 13.5H11l-1 8L19.5 10H13z"/></symbol>
+    <symbol id="i-template" viewBox="0 0 24 24"><path d="M6 2.5h8l5 5V21H6z"/><path d="M14 2.5V8h5"/><path d="M9 13h7M9 17h5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 17v-6M11 17V6M16 17V9M20 17v-3"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M7 9l3 3-3 3M12.5 15H17"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.5l-8.2 8.2a5 5 0 0 1-7-7L13 4.5a3.3 3.3 0 0 1 4.7 4.7l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4L15 7.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 3.5h3l2 5-2.5 1.5a11 11 0 0 0 5.5 5.5l1.5-2.5 5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 5.5a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 3.5h14v11l-5 5H5z"/><path d="M14 19.5v-5h5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9M7 14l5-5 5 5M4 4h16"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4M6 12h10"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-assign" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 11l2 2 4-4"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.5.8-2.5 1.9 0 2.6 5.2 1.5 5.2 4.3 0 1.1-1.1 1.9-2.7 1.9-1.2 0-2.2-.5-2.7-1.4M12 6.5V8M12 16v1.5"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4.5M9 13v.5M15 13v.5M9.5 16h5"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M4 4.5h16a1 1 0 0 1 1 1V16a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z"/><path d="M8 13.5v-2M12 13.5V9M16 13.5v-6"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-group" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3"/><circle cx="5" cy="10" r="2.2"/><circle cx="19" cy="10" r="2.2"/><path d="M6.5 20a5.5 5.5 0 0 1 11 0"/><path d="M1.5 19a3.8 3.8 0 0 1 5-3.4M22.5 19a3.8 3.8 0 0 0-5-3.4"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 9"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></symbol>
+  </defs>
+</svg>
 
-    <div class="login-logo">
-      <div class="login-icon-wrap">💬</div>
-      <div class="login-title">Super WhatsApp</div>
-      <div class="login-subtitle">by Carlos Bardales · Portal de gestión profesional</div>
-    </div>
-
-    <div class="lf">
-      <label>👤 Usuario</label>
-      <input type="text" id="loginUser" placeholder="Tu nombre" autocomplete="username"
-             onkeypress="if(event.key==='Enter')Auth.login()">
-    </div>
-
-    <div class="lf">
-      <label>🔑 Contraseña (Token)</label>
-      <input type="password" id="loginPass" placeholder="APP_SECRET_TOKEN"
-             autocomplete="current-password" onkeypress="if(event.key==='Enter')Auth.login()">
-      <div class="hint">La clave que guardaste en Apps Script → Propiedades del script</div>
-    </div>
-
-    <!-- Primera vez / cambiar URL -->
-    <div class="first-time-section" id="firstTimeSection">
-      <div class="lf" style="margin-top:4px">
-        <label>🔗 URL de Google Apps Script</label>
-        <input type="url" id="loginUrl" placeholder="https://script.google.com/macros/s/.../exec"
-               autocomplete="off">
-        <div class="hint">Solo se pide la primera vez. Se guarda automáticamente en tu navegador.</div>
+<!-- Ingreso -->
+<div id="login" class="login" hidden>
+  <form class="login-card" data-submit="login" autocomplete="on">
+    <div class="login-brand">
+      <span class="brand-mark"><svg class="i"><use href="#i-mark"/></svg></span>
+      <div>
+        <h1>WA Power</h1>
+        <p>CRM y operación de WhatsApp</p>
       </div>
     </div>
 
-    <button class="login-btn" id="loginBtn" onclick="Auth.login()">
-      Ingresar al portal
-    </button>
+    <label class="field">
+      <span>Usuario</span>
+      <input class="input" name="user" autocomplete="username" required placeholder="Tu nombre">
+    </label>
+    <label class="field">
+      <span>Contraseña</span>
+      <input class="input" name="password" type="password" autocomplete="current-password" required placeholder="Tu contraseña o la clave maestra">
+    </label>
 
-    <div class="login-error" id="loginError"></div>
+    <details class="login-conn" id="loginConn">
+      <summary>Conexión con Google Apps Script</summary>
+      <label class="field">
+        <span>URL de la aplicación web</span>
+        <input class="input" name="url" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      </label>
+      <p class="hint">Se pide una sola vez y queda guardada en este navegador.</p>
+    </details>
 
-    <div class="login-divider">
-      ¿Primera vez? <a href="#" onclick="Auth.toggleUrl(event)">Configura tu conexión</a>
-    </div>
-
-    <div class="login-footer">Super WhatsApp v1.0 by Carlos Bardales · Powered by TextMeBot</div>
-  </div>
+    <p class="login-error" id="loginError" role="alert" hidden></p>
+    <button class="btn btn-primary btn-block" type="submit" id="loginBtn">Ingresar</button>
+    <button class="btn btn-ghost btn-block" type="button" data-act="demo">Explorar la demo sin conectar nada</button>
+    <p class="login-foot">Creado por Carlos Bardales · v2.0</p>
+  </form>
 </div>
 
-<!-- Toast -->
-<div class="toast-container" id="toastContainer"></div>
-
-<!-- Mobile toggle -->
-<button class="sidebar-toggle" id="sidebarToggle">☰</button>
-
-<!-- ══════════════════════════════════════════════════ -->
-<!-- SIDEBAR                                            -->
-<!-- ══════════════════════════════════════════════════ -->
-<nav class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <h1><span class="logo-icon">⚡</span> Super WA<br><small>by Carlos Bardales</small></h1>
-  </div>
-
-  <div class="sidebar-nav">
-    <div class="nav-section">Principal</div>
-    <a class="nav-item active" data-section="dashboard" href="#dashboard">
-      <span class="nav-icon">📊</span>Dashboard
-    </a>
-    <a class="nav-item" data-section="inbox" href="#inbox">
-      <span class="nav-icon">📥</span>Inbox
-    </a>
-    <a class="nav-item" data-section="conversations" href="#conversations">
-      <span class="nav-icon">💬</span>Conversaciones
-    </a>
-    <a class="nav-item" data-section="send" href="#send">
-      <span class="nav-icon">📤</span>Enviar mensaje
-    </a>
-
-    <div class="nav-section">Automatización</div>
-    <a class="nav-item" data-section="scheduler" href="#scheduler">
-      <span class="nav-icon">⏰</span>Programador
-    </a>
-    <a class="nav-item" data-section="automations" href="#automations">
-      <span class="nav-icon">🤖</span>Automatizaciones
-    </a>
-    <a class="nav-item" data-section="campaigns" href="#campaigns">
-      <span class="nav-icon">📢</span>Campañas
-    </a>
-    <a class="nav-item" data-section="templates" href="#templates">
-      <span class="nav-icon">📝</span>Plantillas
-    </a>
-
-    <div class="nav-section">Gestión</div>
-    <a class="nav-item" data-section="contacts" href="#contacts">
-      <span class="nav-icon">👥</span>Contactos
-    </a>
-    <a class="nav-item" data-section="analytics" href="#analytics">
-      <span class="nav-icon">📈</span>Analítica
-    </a>
-    <a class="nav-item" data-section="settings" href="#settings">
-      <span class="nav-icon">⚙️</span>Configuración
-    </a>
-  </div>
-
-  <!-- Badge de usuario -->
-  <div class="sidebar-user-section" id="sidebarUser" style="display:none">
-    <div class="sidebar-avatar" id="userAvatar">U</div>
-    <div class="sidebar-user-info">
-      <div class="sidebar-user-name" id="userName">Usuario</div>
-      <div class="sidebar-user-role">Administrador</div>
+<!-- Aplicación -->
+<div id="app" class="app" hidden>
+  <aside class="nav" id="nav">
+    <div class="nav-brand">
+      <span class="brand-mark sm"><svg class="i"><use href="#i-mark"/></svg></span>
+      <div class="nav-brand-text"><strong>WA Power</strong><span id="navCompany">—</span></div>
     </div>
-    <button class="sidebar-logout" title="Cerrar sesión" onclick="Auth.logout()">⏻</button>
-  </div>
-</nav>
-
-<!-- Mobile Bottom Nav -->
-<div class="mobile-nav">
-  <div class="mobile-nav-inner">
-    <div class="mobile-nav-item active" data-section="dashboard" onclick="location.hash='dashboard'">
-      <span class="nav-icon">📊</span>Home
-    </div>
-    <div class="mobile-nav-item" data-section="inbox" onclick="location.hash='inbox'">
-      <span class="nav-icon">📥</span>Inbox
-    </div>
-    <div class="mobile-nav-item" data-section="send" onclick="location.hash='send'">
-      <span class="nav-icon">📤</span>Enviar
-    </div>
-    <div class="mobile-nav-item" data-section="contacts" onclick="location.hash='contacts'">
-      <span class="nav-icon">👥</span>Contactos
-    </div>
-    <div class="mobile-nav-item" data-section="settings" onclick="location.hash='settings'">
-      <span class="nav-icon">⚙️</span>Config
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════ -->
-<!-- MAIN CONTENT                                       -->
-<!-- ══════════════════════════════════════════════════ -->
-<main class="main-content" id="mainContent">
-
-  <!-- Modal overlay -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3></h3>
-        <button class="modal-close" onclick="Modal.close()">✕</button>
+    <nav class="nav-list" aria-label="Secciones">
+      <a class="nav-item" href="#/mesa" data-route="mesa"><svg class="i"><use href="#i-desk"/></svg><span>Mesa de atención</span></a>
+      <a class="nav-item" href="#/bandeja" data-route="bandeja"><svg class="i"><use href="#i-inbox"/></svg><span>Bandeja</span><b class="nav-count lamp-count" id="cntInbox" hidden></b></a>
+      <a class="nav-item" href="#/contactos" data-route="contactos"><svg class="i"><use href="#i-users"/></svg><span>Contactos</span></a>
+      <a class="nav-item" href="#/embudo" data-route="embudo"><svg class="i"><use href="#i-board"/></svg><span>Oportunidades</span></a>
+      <a class="nav-item" href="#/tareas" data-route="tareas"><svg class="i"><use href="#i-tasks"/></svg><span>Tareas</span><b class="nav-count" id="cntTasks" hidden></b></a>
+      <p class="nav-group">Envíos</p>
+      <a class="nav-item" href="#/campanas" data-route="campanas" data-min="supervisor"><svg class="i"><use href="#i-megaphone"/></svg><span>Campañas</span></a>
+      <a class="nav-item" href="#/grupos" data-route="grupos"><svg class="i"><use href="#i-group"/></svg><span>Grupos</span></a>
+      <a class="nav-item" href="#/programados" data-route="programados"><svg class="i"><use href="#i-clock"/></svg><span>Programados</span></a>
+      <a class="nav-item" href="#/plantillas" data-route="plantillas"><svg class="i"><use href="#i-template"/></svg><span>Plantillas</span></a>
+      <p class="nav-group">Control</p>
+      <a class="nav-item" href="#/automatizacion" data-route="automatizacion" data-min="supervisor"><svg class="i"><use href="#i-bolt"/></svg><span>Automatización</span></a>
+      <a class="nav-item" href="#/analitica" data-route="analitica" data-min="supervisor"><svg class="i"><use href="#i-chart"/></svg><span>Analítica</span></a>
+      <a class="nav-item" href="#/whatsapp" data-route="whatsapp"><svg class="i"><use href="#i-terminal"/></svg><span>Comandos por WhatsApp</span></a>
+      <a class="nav-item" href="#/configuracion" data-route="configuracion"><svg class="i"><use href="#i-sliders"/></svg><span>Configuración</span></a>
+    </nav>
+    <div class="nav-foot">
+      <button class="bot-switch" type="button" data-act="toggle-bot" id="botSwitch" aria-pressed="true">
+        <span class="bot-dot"></span><span id="botLabel">Bot encendido</span>
+      </button>
+      <div class="nav-user">
+        <span class="avatar" id="meAvatar">—</span>
+        <div class="nav-user-text"><strong id="meName">—</strong><span id="meRole">—</span></div>
+        <button class="icon-btn" type="button" data-act="logout" title="Cerrar sesión" aria-label="Cerrar sesión"><svg class="i"><use href="#i-logout"/></svg></button>
       </div>
-      <div class="modal-body"></div>
-      <div class="modal-footer"></div>
     </div>
-  </div>
+  </aside>
+  <div class="nav-scrim" data-act="nav-close"></div>
 
-  <div class="section active" id="section-dashboard">
-    <div class="page-header"><h2>Dashboard</h2><p>Resumen general del sistema</p></div>
-    <div id="dashboardContent"></div>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" type="button" data-act="nav-open" aria-label="Abrir menú"><svg class="i"><use href="#i-menu"/></svg></button>
+      <h2 class="topbar-title" id="viewTitle">—</h2>
+      <button class="search-trigger" type="button" data-act="palette" aria-label="Buscar o ir a (Ctrl + K)">
+        <svg class="i"><use href="#i-search"/></svg><span>Buscar contacto o ir a…</span><kbd>Ctrl K</kbd>
+      </button>
+      <div class="topbar-actions">
+        <button class="btn btn-sm demo-only" type="button" data-act="demo-inbound" hidden><svg class="i"><use href="#i-sparkle"/></svg><span>Simular cliente</span></button>
+        <button class="btn btn-primary btn-sm" type="button" data-act="compose"><svg class="i"><use href="#i-send"/></svg><span>Nuevo mensaje</span></button>
+        <button class="icon-btn" type="button" data-act="theme" aria-label="Cambiar tema" title="Tema claro u oscuro"><svg class="i"><use href="#i-moon"/></svg></button>
+      </div>
+    </header>
+    <div class="demo-banner" id="demoBanner" hidden>
+      Estás en la demo: los datos son de ejemplo y nada sale a WhatsApp. <a href="#" data-act="demo-exit">Salir de la demo</a>
+    </div>
+    <main class="view" id="view" tabindex="-1"></main>
   </div>
-  <div class="section" id="section-inbox">
-    <div class="page-header"><h2>Inbox</h2><p>Mensajes recibidos</p></div>
-    <div id="inboxContent"></div>
-  </div>
-  <div class="section" id="section-conversations">
-    <div class="page-header"><h2>Conversaciones</h2><p>Historial por contacto</p></div>
-    <div id="conversationsContent"></div>
-  </div>
-  <div class="section" id="section-send">
-    <div class="page-header"><h2>Enviar mensaje</h2><p>Envío manual de mensajes WhatsApp</p></div>
-    <div id="sendContent"></div>
-  </div>
-  <div class="section" id="section-scheduler">
-    <div class="page-header"><h2>Programador</h2><p>Programa envíos automáticos</p></div>
-    <div id="schedulerContent"></div>
-  </div>
-  <div class="section" id="section-automations">
-    <div class="page-header"><h2>Automatizaciones</h2><p>Reglas de respuesta automática</p></div>
-    <div id="automationsContent"></div>
-  </div>
-  <div class="section" id="section-campaigns">
-    <div class="page-header"><h2>Campañas</h2><p>Envíos masivos segmentados</p></div>
-    <div id="campaignsContent"></div>
-  </div>
-  <div class="section" id="section-templates">
-    <div class="page-header"><h2>Plantillas</h2><p>Mensajes reutilizables con variables</p></div>
-    <div id="templatesContent"></div>
-  </div>
-  <div class="section" id="section-contacts">
-    <div class="page-header"><h2>Contactos</h2><p>Directorio de contactos WhatsApp</p></div>
-    <div id="contactsContent"></div>
-  </div>
-  <div class="section" id="section-analytics">
-    <div class="page-header"><h2>Analítica</h2><p>Métricas y estadísticas</p></div>
-    <div id="analyticsContent"></div>
-  </div>
-  <div class="section" id="section-settings">
-    <div class="page-header"><h2>Configuración</h2><p>Conecta y configura tu sistema</p></div>
-    <div id="settingsContent"></div>
-  </div>
-</main>
+</div>
 
-<!-- Scripts — orden importante -->
-<script src="src/api.js"></script>
-<script src="src/app.js"></script>
-<script src="src/components/dashboard.js"></script>
-<script src="src/components/inbox.js"></script>
-<script src="src/components/conversations.js"></script>
-<script src="src/components/send.js"></script>
-<script src="src/components/scheduler.js"></script>
-<script src="src/components/automations.js"></script>
-<script src="src/components/campaigns.js"></script>
-<script src="src/components/templates.js"></script>
-<script src="src/components/contacts.js"></script>
-<script src="src/components/analytics.js"></script>
-<script src="src/components/settings.js"></script>
+<div id="layer"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
+<script src="assets/core.js"></script>
+<script src="assets/views-attend.js"></script>
+<script src="assets/views-crm.js"></script>
+<script src="assets/views-send.js"></script>
+<script src="assets/views-control.js"></script>
+<script>APP.boot();</script>
 </body>
 </html>
