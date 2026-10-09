@@ -729,3 +729,6 @@ html, body { overflow: hidden; overscroll-behavior: none; }
 .panel-body { min-width: 0; }
 
 @media (max-width: 900px) { .topbar-actions [data-act="theme"] { display: none; } }
+
+/* Los separadores de día no se apilan arriba */
+.day-sep { position: static; }

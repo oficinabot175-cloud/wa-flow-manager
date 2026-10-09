@@ -112,6 +112,7 @@
             <label class="field"><span>Teléfono</span><input class="input" name="phone" value="${c.phone || ''}" ${isNew ? 'required' : 'disabled'} placeholder="999 888 777" inputmode="tel"><span class="hint">${isNew ? 'Con 9 dígitos se agrega el 51 de Perú.' : 'El número no se puede cambiar.'}</span></label>
             <label class="field"><span>Nombre</span><input class="input" name="display_name" value="${c.display_name || c.whatsapp_name || ''}" placeholder="Cómo lo llamas tú" autofocus></label>
           </div>
+          ${!isNew && APP.isLid(c.phone) ? html`<label class="field"><span>Número real <span class="muted" style="font-weight:400">· WhatsApp oculta su número</span></span><input class="input" name="wa_phone" value="${c.wa_phone || ''}" placeholder="987654321" inputmode="tel"><span class="hint">Si lo conoces, los mensajes se enviarán a este número.</span></label>` : ''}
           <div class="fields">
             <label class="field"><span>Empresa</span><input class="input" name="company" value="${c.company || ''}"></label>
             <label class="field"><span>Correo</span><input class="input" name="email" type="email" value="${c.email || ''}"></label>

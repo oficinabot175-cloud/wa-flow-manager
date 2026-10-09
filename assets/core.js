@@ -16,6 +16,7 @@
   Object.assign(APP, { html, raw, esc, icon });
 
   // ── Formatos ───────────────────────────────────────────────────────────
+  APP.isLid = (p) => /^\d{14,}$/.test(String(p || ''));
   const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const pad = (n) => String(n).padStart(2, '0');
@@ -53,7 +54,7 @@
     waitMin: (iso) => { const d = D(iso); return d ? Math.max(0, Math.round((Date.now() - d.getTime()) / 60000)) : 0; },
     wait: (iso) => { const m = F.waitMin(iso); if (m < 60) return m + ' min'; if (m < 1440) return Math.floor(m / 60) + ' h ' + pad(m % 60); return Math.floor(m / 1440) + ' d'; },
     money: (v) => APP.meta.currency + ' ' + Math.round(parseFloat(v) || 0).toLocaleString('es-PE'),
-    phone: (p) => { p = String(p || ''); if (p.includes('@')) return 'Grupo'; if (p.length === 11 && p.startsWith('51')) return '+51 ' + p.slice(2, 5) + ' ' + p.slice(5, 8) + ' ' + p.slice(8); return p ? '+' + p : ''; },
+    phone: (p) => { p = String(p || ''); if (p.includes('@')) return 'Grupo'; if (/^\d{14,}$/.test(p)) return 'Número oculto por WhatsApp'; if (p.length === 11 && p.startsWith('51')) return '+51 ' + p.slice(2, 5) + ' ' + p.slice(5, 8) + ' ' + p.slice(8); return p ? '+' + p : ''; },
     initials: (n) => { const w = String(n || '?').replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : '')).toUpperCase(); },
     hue: (n) => { let h = 0; for (const c of String(n || '')) h = (h * 31 + c.charCodeAt(0)) % 997; return h % 6; },
     toLocalInput: (iso) => { const d = D(iso); return d ? d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) : ''; },
@@ -318,20 +319,26 @@
     const s = loadSession();
     if (window.__WAP_AUTODEMO) return APP.acts.demo();
     if (s && s.demo) return APP.acts.demo();
-    if (s && s.token && s.url) {
-      Object.assign(APP.state, { url: s.url, token: s.token, user: s.user });
+    if (s && s.token && (s.url || defaultUrl())) {
+      Object.assign(APP.state, { url: s.url || defaultUrl(), token: s.token, user: s.user });
       try { const r = await APP.api('me'); APP.state.user = r.user; return enter(); }
       catch (e) { APP.state.token = ''; }
     }
     showLogin(s);
   };
 
+  const URL_RE = /^https:\/\/script\.google(usercontent)?\.com\//;
+  const defaultUrl = () => (URL_RE.test(String(window.WAP_URL || '')) ? window.WAP_URL : '');
   function showLogin(s) {
     document.getElementById('app').hidden = true;
     const lg = document.getElementById('login');
     lg.hidden = false;
     const f = lg.querySelector('form');
-    if (s && s.url) f.url.value = s.url; else document.getElementById('loginConn').open = true;
+    const url = (s && s.url) || defaultUrl();
+    f.url.value = url;
+    // Con la URL guardada en config.js solo se pide usuario y contraseña
+    document.getElementById('loginConn').open = !url;
+    document.getElementById('loginConnSummary').textContent = url ? 'Servidor configurado · cambiar' : 'Conexión con Google Apps Script';
     if (s && s.user) f.user.value = s.user.name || '';
     setTimeout(() => (f.user.value ? f.password : f.user).focus(), 50);
   }
@@ -341,8 +348,8 @@
     const err = document.getElementById('loginError');
     const btn = document.getElementById('loginBtn');
     err.hidden = true;
-    const url = d.url || (loadSession() || {}).url || '';
-    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) {
+    const url = d.url || (loadSession() || {}).url || defaultUrl();
+    if (!URL_RE.test(url)) {
       document.getElementById('loginConn').open = true;
       err.textContent = 'Pega la URL de tu aplicación web de Apps Script (empieza con https://script.google.com/macros/s/…).';
       err.hidden = false;
@@ -395,6 +402,7 @@
     await APP.loadMeta();
     APP.route();
     startPoll();
+    if (!APP.state.demo && u.user_id === 'MASTER' && !(APP.meta.users || []).some((x) => x.role === 'admin')) setTimeout(APP.firstAdmin, 900);
     setTimeout(() => { APP.prefetch('conversations', { filter: 'open', q: '' }); APP.prefetch('templates', { status: 'active' }); }, 1200);
   }
 
@@ -426,6 +434,37 @@
     if (r) setBot(on);
   };
 
+  /** Entraste con la clave maestra y aún no hay administradores: crea tu propio usuario. */
+  APP.firstAdmin = () => {
+    APP.modal({
+      title: 'Crea tu usuario de administrador',
+      body: html`<form id="faForm" data-submit="fa-save" class="stack">
+        <p class="soft">Entraste con la clave maestra. Crea tu usuario y contraseña: desde ahora entrarás solo con ellos y la clave maestra queda guardada para emergencias.</p>
+        <label class="field"><span>Tu nombre (será tu usuario)</span><input class="input" name="name" value="Carlos Bardales" required autocomplete="username"></label>
+        <label class="field"><span>Contraseña</span><input class="input" name="password" type="password" minlength="6" required autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label>
+        <label class="field"><span>Repite la contraseña</span><input class="input" name="password2" type="password" minlength="6" required autocomplete="new-password"></label>
+        <label class="field"><span>Celular para comandos y avisos <span class="muted" style="font-weight:400">· opcional</span></span><input class="input" name="phone" inputmode="tel" placeholder="Un número distinto al del bot"><span class="hint">No pongas el número conectado a TextMeBot: WhatsApp no te mostraría lo que se envía a sí mismo.</span></label>
+      </form>`,
+      foot: html`<button class="btn" type="button" data-act="layer-close">Más tarde</button><button class="btn btn-primary" type="submit" form="faForm">Crear mi usuario</button>`,
+      on: {
+        'fa-save': async (form) => {
+          const d = APP.formData(form);
+          if (d.password !== d.password2) return APP.toast('Las contraseñas no coinciden.', 'error');
+          const r = await APP.try('saveUser', { name: d.name, password: d.password, phone: d.phone, role: 'admin' });
+          if (!r) return;
+          try {
+            const l = await APP.api('login', { user: d.name, password: d.password });
+            APP.state.token = l.token; APP.state.user = l.user; saveSession();
+            document.getElementById('meName').textContent = l.user.name;
+          } catch (e) {}
+          form.closest('.overlay')._close();
+          APP.toast('Listo: desde ahora entras con "' + d.name + '" y tu contraseña.', '', { long: true });
+          APP.loadMeta();
+        }
+      }
+    });
+  };
+
   // ── Tema ───────────────────────────────────────────────────────────────
   function applyTheme(t) {
     if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
@@ -446,8 +485,20 @@
 
   // ── Novedades cada 20 s ────────────────────────────────────────────────
   let pollTimer = null, pollSince = '', pollV = '', polling = false;
-  function startPoll() { stopPoll(); pollSince = new Date().toISOString(); pollV = ''; poll(); pollTimer = setInterval(poll, 15000); }
-  function stopPoll() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+  // Bandeja abierta: cada 4 s · Mesa: 6 s · otras secciones: 10 s · pestaña en segundo plano: 20 s.
+  // Si no cambió nada, el servidor responde en una línea (casi sin costo).
+  function pollDelay() {
+    if (document.hidden) return 20000;
+    const n = APP.cur && APP.cur._name;
+    return n === 'bandeja' ? 4000 : n === 'mesa' ? 6000 : 10000;
+  }
+  function startPoll() {
+    stopPoll();
+    pollSince = new Date().toISOString(); pollV = '';
+    const loop = async () => { try { await poll(); } finally { pollTimer = setTimeout(loop, pollDelay()); } };
+    loop();
+  }
+  function stopPoll() { if (pollTimer) clearTimeout(pollTimer); pollTimer = null; }
   APP.pollNow = () => { pollV = ''; return poll(); };
   document.addEventListener('visibilitychange', () => { if (!document.hidden && APP.state.user) poll(); });
 
@@ -468,10 +519,11 @@
     } catch (e) {}
   };
   async function poll() {
-    if ((document.hidden && !APP.state.demo) || polling) return;
+    if (polling || !APP.state.user) return;
     polling = true;
     let r;
-    try { r = await APP.api('poll', { since: pollSince, v: pollV }); } catch (e) { polling = false; return; }
+    const extra = APP.cur && APP.cur.pollParams ? APP.cur.pollParams() : {};
+    try { r = await APP.api('poll', Object.assign({ since: pollSince, v: pollV }, extra)); } catch (e) { polling = false; return; }
     polling = false;
     pollSince = r.now;
     if (r.unchanged) { if (APP.cur && APP.cur.tick) APP.cur.tick(); return; }
@@ -488,7 +540,7 @@
     document.title = (w ? '(' + w + ') ' : '') + (APP.cur ? APP.cur.title : '') + ' · WA Power';
     if (APP.meta.bot !== r.bot) setBot(r.bot);
     (r.fresh || []).forEach((m) => {
-      const viewing = APP.cur === APP.views.bandeja && APP.views.bandeja.phone === m.phone;
+      const viewing = APP.cur === APP.views.bandeja && APP.views.bandeja.phone === m.phone && !document.hidden;
       if (viewing) return;
       APP.toast(html`<strong>${m.name}</strong> ${(m.body || '').slice(0, 80)}`, 'lamp', { onClick: () => APP.go('bandeja/' + m.phone) });
       APP.chime();

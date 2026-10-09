@@ -8,7 +8,7 @@
  *   TEXTMEBOT_API_KEY · APP_SECRET_TOKEN · WEBHOOK_SECRET
  */
 
-var APP_VERSION = '2.1.0';
+var APP_VERSION = '2.2.0';
 
 // ID de tu Google Sheet (el mismo de la v1: los datos se conservan y se migran)
 var SPREADSHEET_ID = '1kB2zeGAX8MGnFLMVnP68wOueE4KZnZ621xAizC0BwI4';
@@ -18,7 +18,7 @@ var SCHEMA = {
   Settings:          ['key', 'value', 'description', 'updated_at'],
   Users:             ['user_id', 'name', 'email', 'phone', 'role', 'password_hash', 'salt', 'active', 'created_at', 'last_login_at'],
   Contacts:          ['contact_id', 'phone', 'whatsapp_name', 'display_name', 'tags', 'status', 'source', 'first_seen_at', 'last_seen_at', 'notes', 'do_not_contact',
-                      'email', 'company', 'city', 'owner', 'custom_1', 'custom_2', 'last_inbound_at', 'last_outbound_at', 'created_at', 'updated_at', 'bot'],
+                      'email', 'company', 'city', 'owner', 'custom_1', 'custom_2', 'last_inbound_at', 'last_outbound_at', 'created_at', 'updated_at', 'bot', 'wa_phone'],
   Conversations:     ['conversation_id', 'phone', 'whatsapp_name', 'last_message', 'last_message_at', 'total_messages', 'status', 'summary', 'updated_at',
                       'last_direction', 'unread', 'assigned_to', 'waiting_since', 'last_human_reply_at'],
   Messages:          ['message_id', 'phone', 'direction', 'timestamp', 'type', 'body', 'file_url', 'document_url', 'status', 'source', 'agent', 'rule_id', 'campaign_id', 'schedule_id', 'error', 'audio_url'],
@@ -259,7 +259,23 @@ Table_.prototype.headers = function () {
   if (!this._headers) {
     var sh = this.sheet();
     var lastCol = Math.max(sh.getLastColumn(), 1);
-    this._headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    var h = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    // Actualizaciones: si el esquema trae columnas nuevas, se agregan solas al final
+    var missing = (SCHEMA[this.name] || []).filter(function (c) { return h.indexOf(c) === -1; });
+    if (missing.length && lastCol > 1) {
+      var self = this;
+      withLock_(function () {
+        var cur = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(String);
+        var add = (SCHEMA[self.name] || []).filter(function (c) { return cur.indexOf(c) === -1; });
+        if (add.length) {
+          if (sh.getMaxColumns() < cur.length + add.length) sh.insertColumnsAfter(sh.getMaxColumns(), cur.length + add.length - sh.getMaxColumns());
+          sh.getRange(1, cur.length + 1, 1, add.length).setValues([add]).setFontWeight('bold');
+          sh.getRange(1, cur.length + 1, sh.getMaxRows(), add.length).setNumberFormat('@');
+        }
+        h = cur.concat(add);
+      });
+    }
+    this._headers = h;
   }
   return this._headers;
 };
@@ -484,7 +500,32 @@ function audit_(actor, action, entityType, entityId, details) {
  *  - La clave maestra APP_SECRET_TOKEN siempre entra como admin.
  */
 
-var SESSION_TTL = 21600; // 6 h (máximo de CacheService)
+var SESSION_TTL = 21600; // sesiones antiguas en caché (6 h)
+var TOKEN_DAYS = 30;      // sesiones firmadas: duran 30 días, no se pierden si se vacía la caché
+
+function sessionSecret_() {
+  var s = prop_('SESSION_SECRET');
+  if (!s) { s = randomToken_(); setProp_('SESSION_SECRET', s); }
+  return s;
+}
+
+/** Sesión firmada: datos + firma. No depende de la caché de Google (que borra todo a las 6 h). */
+function makeToken_(session) {
+  var payload = JSON.stringify({ u: session.user_id, n: session.name, r: session.role, p: session.phone || '', e: Date.now() + TOKEN_DAYS * 86400000 });
+  return payload + '~' + hash_(payload, sessionSecret_());
+}
+
+/** Usuarios activos (caché de 5 min) para validar sesiones sin leer la hoja en cada petición. */
+function activeUsers_() {
+  var c = CacheService.getScriptCache();
+  var hit = c.get('users_active');
+  if (hit) return JSON.parse(hit);
+  var map = {};
+  db_('Users').all().forEach(function (u) { if (String(u.active) !== 'false') map[u.user_id] = { name: u.name, role: u.role || 'agent', phone: u.phone }; });
+  c.put('users_active', JSON.stringify(map), 300);
+  return map;
+}
+function usersChanged_() { CacheService.getScriptCache().remove('users_active'); }
 
 function hash_(text, salt) {
   var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(salt) + '|' + String(text), Utilities.Charset.UTF_8);
@@ -527,10 +568,9 @@ function auth_login(p) {
     session = { name: u.name, role: u.role || 'agent', user_id: u.user_id, phone: u.phone };
   }
 
-  var token = randomToken_();
-  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(session), SESSION_TTL);
+  var token = makeToken_(session);
   audit_(session.name, 'login', 'user', session.user_id, { role: session.role });
-  return { success: true, token: token, user: session, expires_in: SESSION_TTL };
+  return { success: true, token: token, user: session, expires_in: TOKEN_DAYS * 86400 };
 }
 
 function auth_session_(token) {
@@ -538,11 +578,37 @@ function auth_session_(token) {
   var master = prop_('APP_SECRET_TOKEN');
   // Compatibilidad: integraciones que envían la clave maestra directamente.
   if (master && safeEqual_(token, master)) return { name: 'api', role: 'admin', user_id: 'MASTER', phone: '' };
+  var cut = String(token).lastIndexOf('~');
+  if (cut > 0) {
+    var payload = token.slice(0, cut);
+    if (!safeEqual_(token.slice(cut + 1), hash_(payload, sessionSecret_()))) return null;
+    var d;
+    try { d = JSON.parse(payload); } catch (e) { return null; }
+    if (!d || d.e < Date.now()) return null;
+    if (d.u === 'MASTER') return { name: d.n, role: 'admin', user_id: 'MASTER', phone: d.p };
+    var u = activeUsers_()[d.u];
+    if (!u) return null; // usuario borrado o desactivado
+    return { name: u.name, role: u.role, user_id: d.u, phone: u.phone };
+  }
+  // Sesiones de la versión anterior (guardadas en caché)
   var cache = CacheService.getScriptCache();
   var raw = cache.get('sess_' + token);
   if (!raw) return null;
-  cache.put('sess_' + token, raw, SESSION_TTL); // se renueva con el uso
+  cache.put('sess_' + token, raw, SESSION_TTL);
   return JSON.parse(raw);
+}
+
+/** Cambiar mi propia contraseña. */
+function auth_changePassword(p, me) {
+  if (me.user_id === 'MASTER') throw new Error('Entraste con la clave maestra. Crea tu usuario en Configuración › Usuarios.');
+  var u = db_('Users').get(me.user_id);
+  if (!u) throw new Error('Usuario no encontrado.');
+  if (!safeEqual_(hash_(p.current || '', u.salt), u.password_hash)) throw new Error('Tu contraseña actual no es correcta.');
+  if (String(p.next || '').length < 6) throw new Error('La contraseña nueva debe tener al menos 6 caracteres.');
+  var salt = randomToken_().slice(0, 16);
+  db_('Users').patch(u, { salt: salt, password_hash: hash_(p.next, salt) });
+  audit_(me.name, 'password_changed', 'user', me.user_id, {});
+  return { success: true };
 }
 
 function auth_logout(p) {
@@ -598,12 +664,15 @@ function users_save(p, me) {
     changes.created_at = nowIso_();
     row = t.insert(changes);
   }
+  usersChanged_();
   audit_(me.name, p.user_id ? 'user_updated' : 'user_created', 'user', row.user_id, { name: name, role: role });
   return { success: true, user_id: row.user_id };
 }
 
 function users_delete(p, me) {
+  if (p.user_id === me.user_id) throw new Error('No puedes eliminar tu propio usuario.');
   var ok = db_('Users').remove(p.user_id);
+  usersChanged_();
   audit_(me.name, 'user_deleted', 'user', p.user_id, {});
   return { success: ok };
 }
@@ -621,12 +690,29 @@ var HUMAN_SOURCES = ['manual', 'command', 'quick-reply', 'template'];
 // ── Teléfonos ────────────────────────────────────────────────────────────
 function isGroup_(p) { return String(p || '').indexOf('@g.us') !== -1; }
 
+/**
+ * ID privado de WhatsApp (LID): cuando una persona oculta su número, WhatsApp entrega un identificador
+ * de 14 o más dígitos (…@lid) en vez del teléfono. No es un número: se le responde como "ID@lid".
+ */
+function isLid_(p) {
+  var s = String(p || '');
+  if (s.indexOf('@lid') !== -1) return true;
+  return !isGroup_(s) && /^\d{14,}$/.test(s);
+}
+
+var TMB_ERRORS = [
+  [/invalid destination/i, 'Ese número no existe en WhatsApp o WhatsApp lo tiene oculto (ID privado). Si conoces su número real, guárdalo en la ficha del contacto.'],
+  [/not connected|disconnected|qr/i, 'Tu WhatsApp está desconectado de TextMeBot. Vuelve a vincularlo escaneando el código QR en textmebot.com.'],
+  [/apikey|api key|invalid key/i, 'La API key de TextMeBot no es válida. Revísala en Configuración › Conexión.'],
+  [/limit|too many|wait/i, 'TextMeBot pidió esperar entre mensajes. Se reintenta en un momento.']
+];
+
 /** Deja solo dígitos (sin +). Números peruanos de 9 dígitos reciben el 51. Los grupos se conservan. */
 function normPhone_(p) {
   var s = String(p || '').trim();
   if (!s) return '';
   if (isGroup_(s)) return s;
-  s = s.replace(/@(c\.us|s\.whatsapp\.net)$/, '').replace(/\D/g, '');
+  s = s.replace(/@(c\.us|s\.whatsapp\.net|lid)$/, '').replace(/\D/g, '');
   var cc = (typeof cfg_ === 'function' ? cfg_('DEFAULT_COUNTRY_CODE') : '51') || '51';
   if (s.length === 9 && s.charAt(0) === '9') s = cc + s;
   return s;
@@ -640,7 +726,9 @@ var MEDIA_LABEL = { image: '📷 Foto', audio: '🎤 Audio', video: '🎥 Video'
 function mediaLabel_(type) { return MEDIA_LABEL[type] || '📎 Archivo'; }
 
 function recipientParam_(phone) {
-  return isGroup_(phone) ? phone : '+' + phone;
+  if (isGroup_(phone)) return phone;
+  if (isLid_(phone)) return String(phone).replace(/@lid$/, '') + '@lid';
+  return '+' + phone;
 }
 
 // ── Variables de plantillas ──────────────────────────────────────────────
@@ -702,7 +790,9 @@ function wa_send_(recipient, text, opts) {
   var wait = last + gap - Date.now();
   if (wait > 0) Utilities.sleep(Math.min(wait, 15000));
 
-  var url = TEXTMEBOT_SEND_URL + '?recipient=' + encodeURIComponent(recipientParam_(phone)) +
+  // Si WhatsApp ocultó el número (ID privado) pero conoces el real, se envía al real
+  var target = contact && contact.wa_phone ? normPhone_(contact.wa_phone) : phone;
+  var url = TEXTMEBOT_SEND_URL + '?recipient=' + encodeURIComponent(recipientParam_(target)) +
     '&apikey=' + encodeURIComponent(apiKey) + '&json=yes';
   if (text) url += '&text=' + encodeURIComponent(text);
   if (opts.file_url) url += '&file=' + encodeURIComponent(opts.file_url);
@@ -729,6 +819,12 @@ function wa_send_(recipient, text, opts) {
   return ok ? { success: true, message_id: msg.message_id } : { success: false, error: err, message_id: msg.message_id };
 }
 
+function tmbFriendly_(msg) {
+  msg = String(msg || '');
+  for (var i = 0; i < TMB_ERRORS.length; i++) if (TMB_ERRORS[i][0].test(msg)) return TMB_ERRORS[i][1];
+  return 'TextMeBot: ' + truncate_(msg, 180);
+}
+
 function wa_parseResponse_(code, body) {
   var text = String(body || '');
   if (code < 200 || code >= 300) return { ok: false, error: 'TextMeBot respondió HTTP ' + code + ': ' + truncate_(text, 180) };
@@ -736,12 +832,12 @@ function wa_parseResponse_(code, body) {
     var j = JSON.parse(text);
     var st = String(j.status || j.result || j.success || '').toLowerCase();
     if (/success|ok|sent|queued|true/.test(st)) return { ok: true };
-    if (st) return { ok: false, error: 'TextMeBot: ' + truncate_(j.message || j.error || text, 180) };
+    if (st) return { ok: false, error: tmbFriendly_(j.comment || j.message || j.error || j.description || text) };
   } catch (e) { /* respuesta en texto/HTML */ }
   var plain = text.replace(/<[^>]+>/g, ' ');
   if (/success|enviado|queued/i.test(plain)) return { ok: true };
   if (/error|fail|invalid|incorrect|not connected|disconnected|banned|limit|wrong/i.test(plain)) {
-    return { ok: false, error: 'TextMeBot: ' + truncate_(plain.replace(/\s+/g, ' ').trim(), 180) };
+    return { ok: false, error: tmbFriendly_(plain.replace(/\s+/g, ' ').trim()) };
   }
   return { ok: true };
 }
@@ -947,6 +1043,11 @@ function inbound_handle_(data) {
 
   var phone = normPhone_(groupMsg && chat ? chat : rawFrom);
   if (!phone) return { processed: false, reason: 'no_sender' };
+  // ID privado: si el webhook también trae el número real, se usa el real como identidad del chat
+  if (isLid_(rawFrom) || isLid_(phone)) {
+    var pn = normPhone_(data.sender_pn || data.senderPn || data.phone_number || data.from_phone || data.participant_pn || data.pn || '');
+    if (/^\d{8,13}$/.test(pn)) phone = pn;
+  }
 
   // Número del bot: se aprende solo del campo "to" del webhook
   var own = ownNumber_();
@@ -1526,11 +1627,15 @@ function contacts_list(p) {
 
 function contacts_save(p, me) {
   var t = db_('Contacts');
-  var fields = ['whatsapp_name', 'display_name', 'tags', 'status', 'notes', 'do_not_contact', 'email', 'company', 'city', 'owner', 'custom_1', 'custom_2', 'bot'];
+  var fields = ['whatsapp_name', 'display_name', 'tags', 'status', 'notes', 'do_not_contact', 'email', 'company', 'city', 'owner', 'custom_1', 'custom_2', 'bot', 'wa_phone'];
   var now = nowIso_();
   var ch = { updated_at: now };
   fields.forEach(function (f) { if (p[f] !== undefined) ch[f] = p[f]; });
   if (ch.tags !== undefined) ch.tags = mergeTags_('', ch.tags);
+  if (ch.wa_phone !== undefined) {
+    ch.wa_phone = ch.wa_phone ? normPhone_(ch.wa_phone) : '';
+    if (ch.wa_phone && !/^\d{8,13}$/.test(ch.wa_phone)) throw new Error('El número real debe tener código de país, por ejemplo 51987654321.');
+  }
   var row;
   withLock_(function () {
     if (p.contact_id) {
@@ -3036,6 +3141,18 @@ function poll_get(p, me) {
   if (p.v && p.v === v) return { success: true, unchanged: true, v: v, now: nowIso_() };
   var r = poll_full_(p, me);
   r.v = v;
+  // En la bandeja: la lista y los mensajes nuevos del chat abierto vienen en la misma respuesta
+  if (p.inbox === 'true') {
+    var l = conv_list({ filter: p.filter || 'open', q: p.q || '' }, me);
+    r.list = { data: l.data, counts: l.counts, filter: p.filter || 'open', q: p.q || '' };
+  }
+  if (p.phone) {
+    var ph = normPhone_(p.phone);
+    var after = String(p.after || '');
+    var list = msgCacheGet_(ph);
+    var msgs = list ? list : db_('Messages').findAllExact('phone', ph, 30).map(msgOut_);
+    r.chat = { phone: ph, messages: msgs.filter(function (m) { return !after || m.at >= after; }) };
+  }
   return r;
 }
 
@@ -3083,6 +3200,7 @@ function actions_() {
   login:             [auth_login, 'public'],
   logout:            [auth_logout, 'agent'],
   me:                [function (p, me) { return { success: true, user: me }; }, 'agent'],
+  changePassword:    [auth_changePassword, 'agent'],
 
   dashboard:         [dashboard_get, 'agent'],
   poll:              [poll_get, 'agent'],

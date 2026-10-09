@@ -20,6 +20,8 @@
         <div class="spread" style="width:100%">${APP.avatar(name, 'lg')}
           ${opts.inInbox ? html`<button class="icon-btn" type="button" data-act="toggle-profile" aria-label="Cerrar ficha">${icon('x')}</button>` : ''}</div>
         <div><h3>${name}</h3><div class="muted small">${F.phone(r.phone)}</div></div>
+        ${APP.isLid(r.phone) ? html`<div class="callout lamp" style="text-align:left">${icon('alert', 'sm')}<span>WhatsApp oculta el número de esta persona y entrega un ID privado. Puedes responderle igual desde aquí. ${c && c.wa_phone ? html`Se le escribe al <strong>${F.phone(c.wa_phone)}</strong>.` : 'Si te responde que no le llega, guarda su número real:'}</span></div>
+          <form class="row" data-submit="pf-waphone" style="width:100%"><input class="input sm" name="wa_phone" value="${(c && c.wa_phone) || ''}" placeholder="Número real (ej. 987654321)" inputmode="tel" aria-label="Número real"><button class="btn btn-sm" type="submit">Guardar</button></form>` : ''}
         <div class="row wrap">
           ${dnc ? html`<span class="pill alert">No contactar</span>` : ''}
           ${c && c.status === 'inactive' ? html`<span class="pill">Inactivo</span>` : ''}
@@ -89,6 +91,7 @@
   Object.assign(APP.acts, {
     'pf-tag-add': (form) => { const t = form.t.value.trim(); if (!t) return; patchContact({ tags: mergeTags(ctx().contact && ctx().contact.tags, t) }, 'Etiqueta agregada.'); },
     'pf-tag-del': (el) => patchContact({ tags: splitTags(ctx().contact.tags).filter((t) => t !== el.dataset.t).join(', ') }, 'Etiqueta quitada.'),
+    'pf-waphone': (form) => patchContact({ wa_phone: form.wa_phone.value.trim() }, form.wa_phone.value.trim() ? 'Número real guardado: los mensajes irán a ese número.' : 'Se volverá a usar el ID privado.'),
     'pf-bot': (el) => patchContact({ bot: el.dataset.v }, { '': 'El chat sigue la regla general del bot.', on: 'El bot siempre responderá en este chat.', off: 'El bot no responderá en este chat.' }[el.dataset.v]),
     'pf-dnc': (el) => patchContact({ do_not_contact: el.checked ? 'true' : 'false' }, el.checked ? 'Marcado como No contactar.' : 'Puede volver a recibir mensajes.'),
     'pf-note': async (form) => { const body = form.body.value.trim(); if (!body) return; if (await APP.try('addNote', { phone: ctx().phone, body }, 'Nota guardada.')) reloadProfile(); },
@@ -465,15 +468,34 @@
       this.loadList(true);
     },
 
-    poll() {
+    /** Lo que la consulta de novedades necesita para traer lista y chat en la misma respuesta. */
+    pollParams() {
+      const msgs = this.chat && this.chat.phone === this.phone ? this.chat.messages.filter((m) => !m.pending) : [];
+      return { inbox: 'true', filter: this.filter, q: this.q, phone: this.phone || '', after: msgs.length ? msgs[msgs.length - 1].at : '' };
+    },
+    poll(r) {
       if (!this.root()) return;
-      const prev = this.list.find((x) => x.phone === this.phone);
-      const prevAt = prev ? prev.last_message_at : '';
-      this.loadList(true).then(() => {
-        if (!this.phone) return;
-        const now = this.list.find((x) => x.phone === this.phone);
-        if (now && now.last_message_at !== prevAt) this.openChat(this.phone, true);
-      });
+      if (r && r.list && r.list.filter === this.filter && r.list.q === this.q) {
+        this.list = r.list.data; this.counts = r.list.counts;
+        this.paintChips(); this.paintList();
+      } else this.loadList(true);
+      if (!this.phone || !this.chat || this.chat.phone !== this.phone) return;
+      const item = this.list.find((x) => x.phone === this.phone);
+      if (item && this.chat.conversation) Object.assign(this.chat.conversation, { status: item.status, waiting_since: item.waiting_since, assigned_to: item.assigned_to });
+      if (r && r.chat && r.chat.phone === this.phone) {
+        const have = new Set(this.chat.messages.map((m) => m.id));
+        const add = r.chat.messages.filter((m) => !have.has(m.id));
+        if (!add.length) return;
+        const sc = document.getElementById('chatScroll');
+        const nearBottom = !sc || sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
+        const keep = sc ? sc.scrollTop : 0;
+        this.chat.messages = this.chat.messages.filter((m) => !m.pending).concat(add);
+        this.paintChat(this.readComposer());
+        if (!nearBottom) { const s2 = document.getElementById('chatScroll'); if (s2) s2.scrollTop = keep; }
+        if (add.some((m) => m.dir === 'in') && !document.hidden) APP.api('markRead', { phone: this.phone }).catch(() => {});
+      } else if (item && this.chat.messages.length && item.last_message_at > this.chat.messages[this.chat.messages.length - 1].at) {
+        this.openChat(this.phone, true);
+      }
     },
 
     on: {

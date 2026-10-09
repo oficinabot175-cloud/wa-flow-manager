@@ -434,6 +434,9 @@
         const u = APP.state.user;
         box.innerHTML = String(html`<div class="stack" style="gap:18px">
           <section class="panel"><div class="panel-head"><h2>Tu sesión</h2></div><div class="panel-body"><dl class="kv" style="grid-template-columns:140px 1fr"><dt>Usuario</dt><dd>${u.name}</dd><dt>Rol</dt><dd>${APP.labels.role[u.role] || u.role}</dd><dt>Servidor</dt><dd class="small" style="overflow-wrap:anywhere">${APP.state.demo ? 'Demo en este navegador' : APP.state.url}</dd></dl></div></section>
+          ${u.user_id !== 'MASTER' && !APP.state.demo ? html`<section class="panel"><div class="panel-head"><h2>Cambiar mi contraseña</h2></div><div class="panel-body">
+            <form class="fields" data-submit="cf-pass"><label class="field"><span>Contraseña actual</span><input class="input" type="password" name="current" required autocomplete="current-password"></label><label class="field"><span>Nueva contraseña</span><input class="input" type="password" name="next" minlength="6" required autocomplete="new-password"></label><div class="field" style="justify-content:flex-end"><button class="btn btn-primary" type="submit">Cambiar</button></div></form>
+          </div></section>` : u.user_id === 'MASTER' && !APP.state.demo ? html`<div class="callout lamp">${icon('alert', 'sm')}<span>Entraste con la clave maestra. <a href="#" data-act="cf-first-admin">Crea tu usuario de administrador</a> para entrar con tu nombre y contraseña.</span></div>` : ''}
           <section class="panel"><div class="panel-head"><h2>Apariencia</h2></div><div class="panel-body"><div class="seg" role="group" aria-label="Tema">${[['', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']].map((o) => html`<button type="button" data-act="cf-theme" data-v="${o[0]}" aria-pressed="${APP.getTheme() === o[0] ? 'true' : 'false'}">${o[1]}</button>`)}</div><p class="hint" style="margin-top:8px">Automático sigue el modo claro u oscuro de tu iPhone o computadora.</p></div></section>
           <section class="panel"><div class="panel-head"><h2>Avisos en este dispositivo</h2></div><div class="panel-body stack">
             <div class="setting" style="padding:0"><div><h3>Sonido al llegar un mensaje</h3><p class="desc">Un tono corto cuando escribe un cliente.</p></div><label class="switch"><input type="checkbox" data-change="cf-sound" ${APP.soundOn() ? 'checked' : ''}><span class="track"></span><span class="sr">Sonido</span></label></div>
@@ -508,6 +511,8 @@
       async 'cf-trig'() { if (await APP.try('installTriggers', {}, (r) => r.message)) this.paint(); },
       async 'cf-tick'(el) { el.disabled = true; const r = await APP.try('runTick', {}); el.disabled = false; if (r) { const x = r.report || {}; APP.toast(x.skipped ? 'Nada pendiente por ahora.' : `Revisión lista: ${x.sent || 0} enviados, ${x.schedules || 0} programados, ${x.reminders || 0} recordatorios.`); this.paint(); } },
       async 'cf-general'(form) { if (await APP.try('saveSettings', { values: APP.formData(form) }, 'Cambios guardados.')) APP.loadMeta(); },
+      async 'cf-pass'(form) { if (await APP.try('changePassword', { current: form.current.value, next: form.next.value }, 'Contraseña cambiada.')) form.reset(); },
+      'cf-first-admin'() { APP.firstAdmin(); },
       'cf-theme'(el) { APP.setTheme(el.dataset.v); APP.$$('[data-act="cf-theme"]').forEach((b) => b.setAttribute('aria-pressed', b === el ? 'true' : 'false')); },
       'cf-sound'(el) { try { localStorage.setItem('wap_sound', el.checked ? 'on' : 'off'); } catch (e) {} if (el.checked) APP.chime(); },
       async 'cf-own'(form) {
