@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>WA Power</title>
   <meta name="description" content="WA Power — CRM y operación de WhatsApp">
-  <meta name="theme-color" content="#0D5C58">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230D5C58'/%3E%3Cpath d='M9 20v-3M14 20v-6M19 20v-9' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='24' cy='10' r='2.4' fill='%23E3A21A'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="WA Power">
+  <link rel="manifest" href="assets/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23128C6B'/%3E%3Cpath d='M10 20v-3M15 20v-6M20 20v-9' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='25' cy='8' r='2.6' fill='%23FFD60A'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -76,7 +83,7 @@
       <span class="brand-mark"><svg class="i"><use href="#i-mark"/></svg></span>
       <div>
         <h1>WA Power</h1>
-        <p>CRM y operación de WhatsApp</p>
+        <p>WhatsApp Corporativo</p>
       </div>
     </div>
 
@@ -110,7 +117,7 @@
   <aside class="nav" id="nav">
     <div class="nav-brand">
       <span class="brand-mark sm"><svg class="i"><use href="#i-mark"/></svg></span>
-      <div class="nav-brand-text"><strong>WA Power</strong><span id="navCompany">—</span></div>
+      <div class="nav-brand-text"><strong>WA Power</strong><span id="navCompany">WhatsApp Corporativo</span></div>
     </div>
     <nav class="nav-list" aria-label="Secciones">
       <a class="nav-item" href="#/mesa" data-route="mesa"><svg class="i"><use href="#i-desk"/></svg><span>Mesa de atención</span></a>
@@ -159,6 +166,13 @@
       Estás en la demo: los datos son de ejemplo y nada sale a WhatsApp. <a href="#" data-act="demo-exit">Salir de la demo</a>
     </div>
     <main class="view" id="view" tabindex="-1"></main>
+    <nav class="tabbar" aria-label="Accesos rápidos">
+      <a class="tab-item" href="#/mesa" data-route="mesa"><svg class="i"><use href="#i-desk"/></svg><span>Mesa</span></a>
+      <a class="tab-item" href="#/bandeja" data-route="bandeja"><span class="tab-ico"><svg class="i"><use href="#i-inbox"/></svg><b class="tab-badge" id="tabInbox" hidden></b></span><span>Bandeja</span></a>
+      <a class="tab-item" href="#/contactos" data-route="contactos"><svg class="i"><use href="#i-users"/></svg><span>Contactos</span></a>
+      <a class="tab-item" href="#/tareas" data-route="tareas"><svg class="i"><use href="#i-tasks"/></svg><span>Tareas</span></a>
+      <button class="tab-item" type="button" data-act="tab-more" data-route="mas"><svg class="i"><use href="#i-menu"/></svg><span>Más</span></button>
+    </nav>
   </div>
 </div>
 

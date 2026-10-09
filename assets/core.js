@@ -98,7 +98,17 @@
   }
   function loadSession() { try { return JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) { return null; } }
 
-  APP.api = async function (action, params) {
+  // Lecturas: se guardan en memoria para mostrar al instante al volver a una pantalla.
+  // Cualquier escritura (guardar, enviar, borrar…) vacía la memoria para no mostrar datos viejos.
+  const READS = new Set(['dashboard', 'conversations', 'conversation', 'contacts', 'deals', 'tasks', 'templates', 'campaigns', 'schedules', 'rules', 'analytics', 'audit', 'commands', 'settings', 'users', 'groups', 'search', 'previewCampaign', 'me', 'poll', 'testRule', 'ping']);
+  const SOFT = new Set(['markRead', 'login', 'logout', 'simulateCommand']);
+  const memo = new Map();
+  const inflight = new Map();
+  const keyOf = (action, params) => action + '|' + JSON.stringify(params || {});
+  APP.cacheClear = () => memo.clear();
+  APP.cacheGet = (action, params) => { const e = memo.get(keyOf(action, params)); return e ? e.data : null; };
+
+  async function rawCall(action, params) {
     const body = Object.assign({ action, token: APP.state.token }, params || {});
     let data;
     if (APP.state.demo) {
@@ -106,9 +116,13 @@
     } else {
       if (!APP.state.url) throw new Error('Falta la URL de Apps Script.');
       let res;
+      const ctl = window.AbortController ? new AbortController() : null;
+      const timer = setTimeout(() => ctl && ctl.abort(), action === 'runSchedule' || action === 'runTick' ? 120000 : 45000);
       try {
-        res = await fetch(APP.state.url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
-      } catch (e) { throw new Error('No hay conexión con Apps Script. Revisa tu internet o la URL.'); }
+        res = await fetch(APP.state.url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', signal: ctl ? ctl.signal : undefined });
+      } catch (e) {
+        throw new Error(e && e.name === 'AbortError' ? 'Apps Script tardó demasiado en responder. Intenta de nuevo.' : 'No hay conexión con Apps Script. Revisa tu internet o la URL.');
+      } finally { clearTimeout(timer); }
       const txt = await res.text();
       try { data = JSON.parse(txt); } catch (e) {
         throw new Error(/<html/i.test(txt) ? 'Apps Script devolvió una página en vez de datos: publica una nueva versión de la Web App con acceso "Cualquier persona".' : 'Respuesta no válida del servidor.');
@@ -117,7 +131,38 @@
     if (data.code === 'unauthorized' && action !== 'login') { APP.expired(); throw new Error(data.error); }
     if (!data.success) { const err = new Error(data.error || 'Algo salió mal.'); err.code = data.code; throw err; }
     return data;
+  }
+
+  APP.api = function (action, params) {
+    const isRead = READS.has(action);
+    if (!isRead) {
+      if (!SOFT.has(action)) memo.clear();
+      return rawCall(action, params);
+    }
+    const k = keyOf(action, params);
+    if (inflight.has(k)) return inflight.get(k);
+    const p = rawCall(action, params).then((d) => {
+      if (action !== 'poll' && action !== 'search') memo.set(k, { data: d, at: Date.now() });
+      return d;
+    }).finally(() => inflight.delete(k));
+    inflight.set(k, p);
+    return p;
   };
+
+  /**
+   * Mostrar primero lo que ya se tiene y luego actualizar (stale-while-revalidate).
+   * cb(datos, desdeMemoria) se llama 1 o 2 veces. Devuelve los datos frescos.
+   */
+  APP.swr = async function (action, params, cb) {
+    const k = keyOf(action, params);
+    const old = memo.get(k);
+    if (old) cb(old.data, true);
+    const fresh = await APP.api(action, params);
+    if (!old || JSON.stringify(old.data) !== JSON.stringify(fresh)) cb(fresh, false);
+    return fresh;
+  };
+  /** Pide en segundo plano para que la próxima vez sea instantáneo. */
+  APP.prefetch = (action, params) => { if (!memo.has(keyOf(action, params))) APP.api(action, params).catch(() => {}); };
   /** Llama a la API mostrando el error como aviso; devuelve null si falla. */
   APP.try = async function (action, params, okMsg) {
     try { const r = await APP.api(action, params); if (okMsg) APP.toast(typeof okMsg === 'function' ? okMsg(r) : okMsg); return r; }
@@ -129,7 +174,9 @@
     const box = document.getElementById('toasts');
     const el = document.createElement('div');
     el.className = 'toast ' + (type || '');
-    el.innerHTML = String(html`${icon(type === 'error' ? 'alert' : type === 'lamp' ? 'inbox' : 'check')}<span>${msg}</span>`);
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    el.innerHTML = String(html`<span class="toast-ico">${icon(type === 'error' ? 'alert' : type === 'lamp' ? 'inbox' : 'check')}</span><span class="toast-msg">${msg}</span>`);
+    while (box.children.length > 2) box.firstElementChild.remove();
     if (opts && opts.onClick) el.addEventListener('click', () => { opts.onClick(); el.remove(); });
     box.appendChild(el);
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, type === 'error' ? 6500 : (opts && opts.long ? 8000 : 3800));
@@ -244,15 +291,22 @@
     APP.$$('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === name));
     document.getElementById('viewTitle').textContent = v.title;
     document.title = (APP._badge ? '(' + APP._badge + ') ' : '') + v.title + ' · WA Power';
-    const el = document.getElementById('view');
-    el.className = 'view' + (v.flush ? ' flush' : '');
-    el.scrollTop = 0;
+    const host = document.getElementById('view');
+    host.className = 'view' + (v.flush ? ' flush' : '');
+    host.scrollTop = 0;
     document.getElementById('app').classList.remove('nav-open');
-    if (!v._sameArgs || v._name !== name) el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    APP.$$('.tab-item').forEach((a) => a.classList.toggle('active', a.dataset.route === name || (a.dataset.route === 'mas' && !['mesa', 'bandeja', 'contactos', 'tareas'].includes(name))));
+    // Contenedor nuevo por cada visita: si una respuesta lenta llega tarde, escribe en un
+    // contenedor que ya no está en pantalla y no pisa la sección actual.
+    const el = document.createElement('div');
+    el.className = 'view-inner';
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    host.replaceChildren(el);
     v._name = name;
     try { await v.render(el, parts.slice(1)); }
-    catch (e) { el.innerHTML = String(html`<div class="page"><div class="panel"><div class="empty">${icon('alert')}<strong>No se pudo cargar esta sección</strong><p>${e.message}</p><button class="btn" data-act="reload">Reintentar</button></div></div></div>`); }
+    catch (e) { if (el.isConnected) el.innerHTML = String(html`<div class="page"><div class="panel"><div class="empty">${icon('alert')}<strong>No se pudo cargar esta sección</strong><p>${e.message}</p><button class="btn" data-act="reload">Reintentar</button></div></div></div>`); }
   };
+  APP.alive = (el) => !!(el && el.isConnected);
   APP.acts.reload = () => APP.route();
   window.addEventListener('hashchange', () => APP.route());
 
@@ -337,20 +391,23 @@
     document.getElementById('demoBanner').hidden = !APP.state.demo;
     if (window.__WAP_AUTODEMO) { const a = document.querySelector('[data-act="demo-exit"]'); if (a) { a.textContent = 'Reiniciar la demo'; a.dataset.act = 'demo-restart'; } }
     APP.$$('.demo-only').forEach((b) => { b.hidden = !APP.state.demo; });
+    APP.prefetch('dashboard');
     await APP.loadMeta();
     APP.route();
     startPoll();
+    setTimeout(() => { APP.prefetch('conversations', { filter: 'open', q: '' }); APP.prefetch('templates', { status: 'active' }); }, 1200);
   }
 
   APP.loadMeta = async function () {
     try {
-      const s = await APP.api('settings');
+      const s = await APP.api('settings', {});
       APP.meta.stages = s.stages || [];
       APP.meta.currency = s.settings.CURRENCY.value || 'S/';
       APP.meta.company = s.settings.COMPANY_NAME.value || '';
       APP.meta.users = s.users || [];
       APP.meta.settings = s;
-      document.getElementById('navCompany').textContent = APP.meta.company || 'Tu empresa';
+      APP.meta.subtitle = (s.settings.PORTAL_SUBTITLE && s.settings.PORTAL_SUBTITLE.value) || 'WhatsApp Corporativo';
+      document.getElementById('navCompany').textContent = APP.meta.subtitle;
       setBot(s.settings.BOT_ENABLED.value === 'true');
     } catch (e) { APP.toast(e.message, 'error'); }
   };
@@ -373,6 +430,8 @@
   function applyTheme(t) {
     if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
   }
+  APP.setTheme = (t) => { applyTheme(t); try { localStorage.setItem('wap_theme', t); } catch (e) {} };
+  APP.getTheme = () => { try { return localStorage.getItem('wap_theme') || ''; } catch (e) { return ''; } };
   APP.acts.theme = () => {
     const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     const next = cur === 'dark' ? 'light' : 'dark';
@@ -381,19 +440,45 @@
   };
 
   // ── Menú móvil ─────────────────────────────────────────────────────────
+  APP.acts['tab-more'] = () => document.getElementById('app').classList.add('nav-open');
   APP.acts['nav-open'] = () => document.getElementById('app').classList.add('nav-open');
   APP.acts['nav-close'] = () => document.getElementById('app').classList.remove('nav-open');
 
   // ── Novedades cada 20 s ────────────────────────────────────────────────
-  let pollTimer = null, pollSince = '';
-  function startPoll() { stopPoll(); pollSince = new Date().toISOString(); poll(); pollTimer = setInterval(poll, 20000); }
+  let pollTimer = null, pollSince = '', pollV = '', polling = false;
+  function startPoll() { stopPoll(); pollSince = new Date().toISOString(); pollV = ''; poll(); pollTimer = setInterval(poll, 15000); }
   function stopPoll() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
-  APP.pollNow = () => poll();
+  APP.pollNow = () => { pollV = ''; return poll(); };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && APP.state.user) poll(); });
+
+  // Sonido corto al llegar un mensaje (se apaga en Configuración › Mi cuenta)
+  let audioCtx = null;
+  APP.soundOn = () => { try { return localStorage.getItem('wap_sound') !== 'off'; } catch (e) { return true; } };
+  APP.chime = () => {
+    if (!APP.soundOn()) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      [[880, 0], [1320, 0.12]].forEach(([f, d]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.18, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.25);
+        o.connect(g); g.connect(audioCtx.destination); o.start(t + d); o.stop(t + d + 0.3);
+      });
+    } catch (e) {}
+  };
   async function poll() {
-    if (document.hidden && !APP.state.demo) return;
+    if ((document.hidden && !APP.state.demo) || polling) return;
+    polling = true;
     let r;
-    try { r = await APP.api('poll', { since: pollSince }); } catch (e) { return; }
+    try { r = await APP.api('poll', { since: pollSince, v: pollV }); } catch (e) { polling = false; return; }
+    polling = false;
     pollSince = r.now;
+    if (r.unchanged) { if (APP.cur && APP.cur.tick) APP.cur.tick(); return; }
+    if (pollV) memo.clear(); // cambió algo en el servidor: lo guardado en memoria ya no sirve
+    pollV = r.v || '';
+    const tb = document.getElementById('tabInbox');
+    if (tb) { tb.hidden = !r.counts.waiting; tb.textContent = r.counts.waiting; }
     const w = r.counts.waiting;
     const ci = document.getElementById('cntInbox');
     ci.hidden = !w; ci.textContent = w;
@@ -405,7 +490,8 @@
     (r.fresh || []).forEach((m) => {
       const viewing = APP.cur === APP.views.bandeja && APP.views.bandeja.phone === m.phone;
       if (viewing) return;
-      APP.toast(m.name + ': ' + (m.body || '').slice(0, 80), 'lamp', { onClick: () => APP.go('bandeja/' + m.phone) });
+      APP.toast(html`<strong>${m.name}</strong> ${(m.body || '').slice(0, 80)}`, 'lamp', { onClick: () => APP.go('bandeja/' + m.phone) });
+      APP.chime();
       if (window.Notification && Notification.permission === 'granted' && document.hidden) {
         try { const n = new Notification(m.name, { body: m.body, tag: m.phone }); n.onclick = () => { window.focus(); APP.go('bandeja/' + m.phone); }; } catch (e) {}
       }
@@ -429,7 +515,7 @@
     ov._close = () => { ov.remove(); layers.splice(layers.indexOf(ov), 1); };
     ov.addEventListener('mousedown', (e) => { if (e.target === ov) ov._close(); });
     const input = ov.querySelector('input'), list = ov.querySelector('.palette-list');
-    let items = [], idx = 0;
+    let items = [], idx = 0, searching = false, enterPending = false;
     const actions = [
       ['Nuevo mensaje', 'send', () => APP.acts.compose()],
       ['Nuevo contacto', 'users', () => APP.views.contactos.edit()],
@@ -459,18 +545,20 @@
     function run(i) { const it = items[i]; if (!it) return; ov._close(); it.run(); }
     const search = APP.debounce(async () => {
       const q = input.value.trim();
-      if (q.length < 2) return paint(null);
-      try { paint(await APP.api('search', { q })); } catch (e) { paint(null); }
-    }, 220);
-    input.addEventListener('input', () => { paint(null); search(); });
+      if (q.length < 2) { searching = false; return paint(null); }
+      try { const r = await APP.api('search', { q }); if (input.value.trim() === q) paint(r); } catch (e) { paint(null); }
+      searching = false;
+      if (enterPending) { enterPending = false; if (items.length) run(0); }
+    }, 200);
+    input.addEventListener('input', () => { searching = input.value.trim().length >= 2; paint(null); search(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); mark(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); mark(); }
-      else if (e.key === 'Enter') { e.preventDefault(); run(idx); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (searching && idx === 0) enterPending = true; else run(idx); }
     });
     list.addEventListener('click', (e) => { const it = e.target.closest('.palette-item'); if (it) run(+it.dataset.i); });
     paint(null);
-    setTimeout(() => input.focus(), 20);
+    input.focus();
   };
 
   // ── Nuevo mensaje (global) ─────────────────────────────────────────────

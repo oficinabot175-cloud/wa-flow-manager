@@ -8,7 +8,7 @@
  *   TEXTMEBOT_API_KEY · APP_SECRET_TOKEN · WEBHOOK_SECRET
  */
 
-var APP_VERSION = '2.0.0';
+var APP_VERSION = '2.1.0';
 
 // ID de tu Google Sheet (el mismo de la v1: los datos se conservan y se migran)
 var SPREADSHEET_ID = '1kB2zeGAX8MGnFLMVnP68wOueE4KZnZ621xAizC0BwI4';
@@ -47,6 +47,9 @@ var PK = {
 // Configuración editable desde el portal (se guarda en la hoja Settings)
 var DEFAULT_SETTINGS = {
   COMPANY_NAME:              ['Mi Empresa', 'Nombre que aparece en los mensajes ({{company_name}})'],
+  PORTAL_SUBTITLE:           ['WhatsApp Corporativo', 'Texto bajo el logo del portal'],
+  BOT_NUMBER:                ['', 'Número conectado a TextMeBot (se detecta solo). No se le envían avisos: WhatsApp no muestra mensajes a uno mismo'],
+  NOTIFY_GROUP:              ['', 'Grupo de WhatsApp donde llegan avisos, recordatorios y el resumen (ID del grupo)'],
   DEFAULT_TIMEZONE:          ['America/Lima', 'Zona horaria del sistema'],
   DEFAULT_COUNTRY_CODE:      ['51', 'Código de país que se agrega a números de 9 dígitos'],
   CURRENCY:                  ['S/', 'Moneda de las oportunidades'],
@@ -146,7 +149,23 @@ function fmtDate_(date, pattern) {
   return Utilities.formatDate(d, tz_(), pattern);
 }
 
-function dayKey_(iso) { return fmtDate_(iso, 'yyyy-MM-dd'); }
+/* Fechas rápidas: Utilities.formatDate es lento si se llama miles de veces (Analítica).
+   Se calcula una vez el desfase de la zona horaria y luego es pura aritmética. */
+var _TZOFF = null;
+function tzOffsetMs_() {
+  if (_TZOFF === null) {
+    var z = Utilities.formatDate(new Date(), tz_(), 'Z');
+    var sign = z.charAt(0) === '-' ? -1 : 1;
+    _TZOFF = sign * (parseInt(z.slice(1, 3), 10) * 60 + parseInt(z.slice(3, 5), 10)) * 60000;
+  }
+  return _TZOFF;
+}
+/** Fecha desplazada a la hora local: usar getUTCDate/getUTCHours/getUTCDay. */
+function toLocal_(iso) {
+  var t = (iso instanceof Date ? iso : new Date(iso)).getTime();
+  return isNaN(t) ? null : new Date(t + tzOffsetMs_());
+}
+function dayKey_(iso) { var d = toLocal_(iso); return d ? d.toISOString().slice(0, 10) : ''; }
 
 function norm_(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -183,6 +202,32 @@ function humanWait_(iso) {
  */
 
 var _TABLES = {};
+
+// ── Versión de datos: cualquier escritura la cambia y así se invalidan las respuestas en caché ──
+var _DIRTY = false;
+function bumpVersion_() {
+  try { CacheService.getScriptCache().put('dv', Date.now().toString(36) + Math.random().toString(36).slice(2, 6), 21600); } catch (e) {}
+}
+function markDirty_() { if (!_DIRTY) { _DIRTY = true; bumpVersion_(); } }
+/** Al terminar una ejecución que escribió: vuelve a cambiar la versión (cierra la carrera con lecturas simultáneas). */
+function finishWrites_() { if (_DIRTY) { bumpVersion_(); _DIRTY = false; } }
+function dataVersion_() {
+  var c = CacheService.getScriptCache();
+  var v = c.get('dv');
+  if (!v) { v = Date.now().toString(36); c.put('dv', v, 21600); }
+  return v;
+}
+/** Respuesta en caché de Apps Script. versioned = se descarta en cuanto cambia cualquier dato. */
+function cached_(key, ttl, fn, versioned) {
+  var cache = CacheService.getScriptCache();
+  var k = 'c_' + key + (versioned ? '_' + dataVersion_() : '');
+  if (k.length > 200) k = 'c_' + hash_(k, 'k').slice(0, 40);
+  var hit = cache.get(k);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  var out = fn();
+  try { var s = JSON.stringify(out); if (s.length < 95000) cache.put(k, s, ttl); } catch (e) {}
+  return out;
+}
 
 function ss_() {
   if (!ss_._ss) ss_._ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -297,19 +342,36 @@ Table_.prototype.get = function (id) { return this.findBy(this.pk, id); };
  * Filas donde col === val usando TextFinder (no lee toda la hoja).
  * Muy rápido para el historial de un número en Messages.
  */
-Table_.prototype.findAllExact = function (col, val) {
-  if (this._rows) return this.filter(function (r) { return String(r[col]) === String(val); });
+Table_.prototype.findAllExact = function (col, val, limit) {
+  if (this._rows) {
+    var all = this.filter(function (r) { return String(r[col]) === String(val); });
+    return limit ? all.slice(-limit) : all;
+  }
   var sh = this.sheet();
   var colIdx = this.headers().indexOf(col);
   if (colIdx === -1 || sh.getLastRow() < 2) return [];
-  var ranges = sh.getRange(2, colIdx + 1, sh.getLastRow() - 1, 1)
-    .createTextFinder(String(val)).matchEntireCell(true).matchCase(true).findAll();
-  var self = this;
-  var width = this.headers().length;
-  return ranges.map(function (rg) {
-    var row = rg.getRow();
-    return self._toObj(sh.getRange(row, 1, 1, width).getValues()[0], row);
+  var rows = sh.getRange(2, colIdx + 1, sh.getLastRow() - 1, 1)
+    .createTextFinder(String(val)).matchEntireCell(true).matchCase(true).findAll()
+    .map(function (rg) { return rg.getRow(); }).sort(function (a, b) { return a - b; });
+  if (limit && rows.length > limit) rows = rows.slice(-limit);
+  if (!rows.length) return [];
+  // Antes: una consulta por fila (un chat de 200 mensajes = 200 viajes a Sheets).
+  // Ahora: se agrupan filas cercanas y se leen en bloque (1 a pocas consultas).
+  var self = this, width = this.headers().length, out = [];
+  var blocks = [], cur = [rows[0], rows[0]];
+  var span = rows[rows.length - 1] - rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (span <= 6000 || rows[i] - cur[1] <= 300) cur[1] = rows[i];
+    else { blocks.push(cur); cur = [rows[i], rows[i]]; }
+  }
+  blocks.push(cur);
+  var want = {};
+  rows.forEach(function (r) { want[r] = true; });
+  blocks.forEach(function (b) {
+    var vals = sh.getRange(b[0], 1, b[1] - b[0] + 1, width).getValues();
+    for (var j = 0; j < vals.length; j++) if (want[b[0] + j]) out.push(self._toObj(vals[j], b[0] + j));
   });
+  return out;
 };
 
 Table_.prototype._fill = function (obj) {
@@ -322,6 +384,7 @@ Table_.prototype._fill = function (obj) {
 };
 
 Table_.prototype.insert = function (obj) {
+  markDirty_();
   var full = this._fill(obj);
   var sh = this.sheet();
   sh.appendRow(this._toArr(full));
@@ -333,6 +396,7 @@ Table_.prototype.insert = function (obj) {
 
 Table_.prototype.insertMany = function (objs) {
   if (!objs.length) return [];
+  markDirty_();
   var self = this;
   var fulls = objs.map(function (o) { return self._fill(o); });
   var sh = this.sheet();
@@ -349,6 +413,7 @@ Table_.prototype.insertMany = function (objs) {
 /** Actualiza una fila ya leída (una sola escritura). */
 Table_.prototype.patch = function (rowObj, changes) {
   if (!rowObj || !rowObj._row) return null;
+  markDirty_();
   for (var k in changes) rowObj[k] = strToCell_(changes[k]);
   this.sheet().getRange(rowObj._row, 1, 1, this.headers().length).setValues([this._toArr(rowObj)]);
   return rowObj;
@@ -362,6 +427,8 @@ Table_.prototype.update = function (id, changes) {
 
 /** Escribe varias filas modificadas agrupando rangos contiguos. */
 Table_.prototype.patchMany = function (rowObjs) {
+  if (!rowObjs.length) return;
+  markDirty_();
   var self = this;
   rowObjs.slice().sort(function (a, b) { return a._row - b._row; }).forEach(function (r) {
     self.sheet().getRange(r._row, 1, 1, self.headers().length).setValues([self._toArr(r)]);
@@ -371,6 +438,7 @@ Table_.prototype.patchMany = function (rowObjs) {
 Table_.prototype.remove = function (id) {
   var row = this.get(id);
   if (!row) return false;
+  markDirty_();
   this.sheet().deleteRow(row._row);
   this._rows = null;
   return true;
@@ -564,6 +632,13 @@ function normPhone_(p) {
   return s;
 }
 
+/** Número conectado a TextMeBot. A él no se envía nada: WhatsApp no muestra mensajes a uno mismo. */
+function ownNumber_() { return normPhone_(cfg_('BOT_NUMBER')); }
+var OWN_NUMBER_ERROR = 'Ese es el número conectado a TextMeBot: WhatsApp no te muestra lo que tu número se envía a sí mismo. Usa otro celular o configura un grupo de avisos (Configuración › Conexión).';
+
+var MEDIA_LABEL = { image: '📷 Foto', audio: '🎤 Audio', video: '🎥 Video', sticker: '💟 Sticker', document: '📄 Documento', location: '📍 Ubicación', contact: '👤 Contacto', media: '📎 Archivo', file: '📎 Archivo' };
+function mediaLabel_(type) { return MEDIA_LABEL[type] || '📎 Archivo'; }
+
 function recipientParam_(phone) {
   return isGroup_(phone) ? phone : '+' + phone;
 }
@@ -609,6 +684,7 @@ function wa_send_(recipient, text, opts) {
   opts = opts || {};
   var phone = normPhone_(recipient);
   if (!phone) return { success: false, error: 'Falta el destinatario.' };
+  if (phone === ownNumber_()) return { success: false, error: OWN_NUMBER_ERROR };
   text = String(text || '');
   if (!text.trim() && !opts.file_url && !opts.document_url && !opts.audio_url) return { success: false, error: 'El mensaje está vacío.' };
 
@@ -680,6 +756,7 @@ function recordOutbound_(phone, text, meta) {
       source: meta.source || 'manual', agent: meta.agent || '', rule_id: meta.rule_id || '',
       campaign_id: meta.campaign_id || '', schedule_id: meta.schedule_id || '', error: meta.error || ''
     });
+    msgCacheAppend_(msg);
     if (meta.status === 'sent' && isGroup_(phone)) {
       var g = db_('Groups').get(phone);
       if (g) db_('Groups').patch(g, { last_sent_at: now });
@@ -799,9 +876,25 @@ function wake_(when) {
 }
 
 /** Aviso a administradores por WhatsApp (no queda como conversación de cliente). */
+/**
+ * A dónde van los avisos, recordatorios y el resumen diario:
+ *  - Si hay un grupo de avisos configurado → a ese grupo (ideal si usas tu propio número como bot).
+ *  - Si no → a los celulares de los usuarios, excepto el número del bot.
+ */
+function notifyTargets_(phones) {
+  var group = cfg_('NOTIFY_GROUP');
+  if (group && isGroup_(group)) return [group];
+  var own = ownNumber_(), seen = {};
+  return (phones || adminPhones_()).map(normPhone_).filter(function (p) {
+    if (!p || p === own || seen[p]) return false;
+    seen[p] = true;
+    return true;
+  });
+}
+
 function notifyAdmins_(text, exceptPhone) {
-  adminPhones_().forEach(function (p) {
-    if (p && p !== exceptPhone) wa_send_(p, text, { source: 'system', force: true });
+  notifyTargets_().forEach(function (p) {
+    if (p !== exceptPhone) wa_send_(p, text, { source: 'system', force: true });
   });
 }
 
@@ -824,20 +917,48 @@ function inbound_handle_(data) {
   var rawFrom = data.from || data.sender || data.phone || data.number || data.author || '';
   var chat = String(data.chat_id || data.chatId || data.group || '');
   var groupMsg = isGroup_(rawFrom) || isGroup_(chat) || String(data.is_group || data.isGroup || '') === 'true';
+  var body = String(data.message !== undefined ? data.message : (data.text || data.body || '')).trim();
+  var type = String(data.type || (data.file ? 'image' : 'text')).toLowerCase();
+  var file = String(data.file || data.file_url || data.media || data.url || '');
+  var name = String(data.from_name || data.name || data.pushname || data.sender_name || '').trim();
+
+  // Fotos, audios y stickers: TextMeBot avisa con textos como "[unknown]" o "[image]"
+  var mm = body.match(/^\[(unknown|image|imagen|photo|audio|ptt|voice|video|sticker|document|documento|file|location|ubicacion|contact|vcard)\]$/i);
+  if (mm) {
+    var k = mm[1].toLowerCase();
+    type = ({ imagen: 'image', photo: 'image', ptt: 'audio', voice: 'audio', documento: 'document', file: 'document', ubicacion: 'location', vcard: 'contact' })[k] || (k === 'unknown' ? (file ? 'document' : 'media') : k);
+    body = '';
+  }
+  var fromMe = /^(true|1|yes)$/i.test(String(data.fromMe || data.from_me || data.is_from_me || data.self || ''));
+
   if (groupMsg) {
     // Se registra el grupo para poder enviarle mensajes programados (sus mensajes no se guardan)
     var gid = isGroup_(chat) ? chat : (isGroup_(rawFrom) ? rawFrom : '');
     if (gid) group_touch_(normPhone_(gid), String(data.group_name || data.subject || data.chat_name || data.groupName || ''));
+    // Comandos escritos en el grupo de avisos (por un usuario registrado o por tu propio número)
+    var ng = cfg_('NOTIFY_GROUP');
+    if (gid && ng && normPhone_(gid) === ng && /^[\/#!]/.test(body) && cfgBool_('COMMANDS_ENABLED')) {
+      var author = normPhone_(data.author || data.participant || data.sender_phone || (isGroup_(rawFrom) ? '' : rawFrom));
+      var guser = author ? auth_userByPhone_(author) : null;
+      if (guser || fromMe || (author && author === ownNumber_())) return cmd_run_(guser || ownerUser_(), body, { reply: true, phone: ng });
+    }
     if (cfgBool_('IGNORE_GROUPS')) return { processed: false, reason: 'group_ignored' };
   }
 
   var phone = normPhone_(groupMsg && chat ? chat : rawFrom);
   if (!phone) return { processed: false, reason: 'no_sender' };
 
-  var body = String(data.message !== undefined ? data.message : (data.text || data.body || '')).trim();
-  var type = String(data.type || (data.file ? 'image' : 'text'));
-  var file = String(data.file || data.file_url || data.media || data.url || '');
-  var name = String(data.from_name || data.name || data.pushname || data.sender_name || '').trim();
+  // Número del bot: se aprende solo del campo "to" del webhook
+  var own = ownNumber_();
+  var to = normPhone_(data.to || data.receiver || data.recipient || '');
+  if (!own && /^\d{10,15}$/.test(to)) { setCfg_('BOT_NUMBER', to); own = to; }
+  // Mensajes de tu propio número: solo comandos (respuesta al grupo de avisos), nunca como cliente
+  if (fromMe || (own && phone === own)) {
+    if (/^[\/#!]/.test(body) && cfgBool_('COMMANDS_ENABLED')) {
+      return cmd_run_(auth_userByPhone_(phone) || ownerUser_(), body, { reply: true, phone: cfg_('NOTIFY_GROUP') || phone });
+    }
+    return { processed: false, reason: 'own_message' };
+  }
 
   // Reintentos del webhook: ignorar el mismo mensaje en 45 s
   var cache = CacheService.getScriptCache();
@@ -858,18 +979,19 @@ function inbound_handle_(data) {
       message_id: uid_('MSG'), phone: phone, direction: 'in', timestamp: now, type: type, body: body,
       file_url: file, status: 'received', source: 'whatsapp'
     });
+    msgCacheAppend_(msg);
     var cr = contact_touch_(phone, name, now);
     var conv = db_('Conversations').findBy('phone', phone);
     if (conv) {
       db_('Conversations').patch(conv, {
-        whatsapp_name: name || conv.whatsapp_name, last_message: truncate_(body || '[' + type + ']', 200),
+        whatsapp_name: name || conv.whatsapp_name, last_message: truncate_(body || mediaLabel_(type), 200),
         last_message_at: now, last_direction: 'in', total_messages: (parseInt(conv.total_messages, 10) || 0) + 1,
         unread: (parseInt(conv.unread, 10) || 0) + 1, waiting_since: conv.waiting_since || now,
         status: conv.status === 'resolved' || conv.status === 'active' || !conv.status ? 'open' : conv.status, updated_at: now
       });
     } else {
       conv = db_('Conversations').insert({
-        conversation_id: uid_('CNV'), phone: phone, whatsapp_name: name, last_message: truncate_(body || '[' + type + ']', 200),
+        conversation_id: uid_('CNV'), phone: phone, whatsapp_name: name, last_message: truncate_(body || mediaLabel_(type), 200),
         last_message_at: now, last_direction: 'in', total_messages: 1, unread: 1, waiting_since: now, status: 'open', updated_at: now
       });
     }
@@ -1169,6 +1291,10 @@ function splitTags_(s) {
 
 // ── Conversaciones ───────────────────────────────────────────────────────
 function conv_list(p, me) {
+  return cached_('cl_' + norm_(me.name) + '_' + (p.filter || 'all') + '_' + norm_(p.q || '') + '_' + (p.limit || ''), 120, function () { return conv_list_(p, me); }, true);
+}
+
+function conv_list_(p, me) {
   var contacts = {};
   db_('Contacts').all().forEach(function (c) { contacts[c.phone] = c; });
   var filter = p.filter || 'all';
@@ -1220,17 +1346,53 @@ function conv_counts_(me) {
   return out;
 }
 
-/** Chat + ficha 360 del contacto en una sola llamada. */
+// ── Historial de cada chat en caché (se actualiza al guardar cada mensaje) ──
+var MSG_CACHE_N = 60;
+function msgOut_(m) {
+  return { id: m.message_id, dir: m.direction, at: m.timestamp, body: truncate_(m.body, 4000), type: m.type, file_url: m.file_url, document_url: m.document_url, audio_url: m.audio_url, status: m.status, source: m.source, agent: m.agent, error: m.error, rule_id: m.rule_id };
+}
+function msgCacheGet_(phone) {
+  var raw = CacheService.getScriptCache().get('mc_' + phone);
+  return raw ? JSON.parse(raw) : null;
+}
+function msgCachePut_(phone, list) {
+  try { CacheService.getScriptCache().put('mc_' + phone, JSON.stringify(list.slice(-MSG_CACHE_N)), 3600); }
+  catch (e) { CacheService.getScriptCache().remove('mc_' + phone); }
+}
+/** Se llama dentro del candado al guardar un mensaje: si el chat está en caché, se le agrega. */
+function msgCacheAppend_(m) {
+  try {
+    var list = msgCacheGet_(m.phone);
+    if (list) { list.push(msgOut_(m)); msgCachePut_(m.phone, list); }
+  } catch (e) { CacheService.getScriptCache().remove('mc_' + m.phone); }
+}
+
+/** Chat + ficha 360 del contacto en una sola llamada. before = traer mensajes más antiguos. */
 function conv_get(p) {
   var phone = normPhone_(p.phone);
   if (!phone) throw new Error('Falta el número.');
-  var msgs = db_('Messages').findAllExact('phone', phone);
-  // Historial de la v1 aún no migrado
-  if (!msgs.length) msgs = legacyMessages_(phone);
-  msgs.sort(function (a, b) { return a.timestamp < b.timestamp ? -1 : 1; });
-  var limit = parseInt(p.limit, 10) || 300;
+  var limit = Math.min(parseInt(p.limit, 10) || MSG_CACHE_N, 300);
   var contact = db_('Contacts').findBy('phone', phone);
   var conv = db_('Conversations').findBy('phone', phone);
+  var out;
+  if (p.before) {
+    var older = db_('Messages').findAllExact('phone', phone).filter(function (m) { return m.timestamp < p.before; })
+      .sort(function (a, b) { return a.timestamp < b.timestamp ? -1 : 1; });
+    return { success: true, phone: phone, messages: older.slice(-limit).map(msgOut_), more: older.length > limit };
+  }
+  var cachedList = limit <= MSG_CACHE_N ? msgCacheGet_(phone) : null;
+  // Si la caché quedó atrás respecto de la conversación, se reconstruye
+  if (cachedList && conv && conv.last_message_at && cachedList.length && cachedList[cachedList.length - 1].at < conv.last_message_at) cachedList = null;
+  var msgs, more;
+  if (cachedList) { msgs = cachedList.slice(-limit); more = (parseInt(conv && conv.total_messages, 10) || 0) > msgs.length; }
+  else {
+    var raw = db_('Messages').findAllExact('phone', phone, limit + 1);
+    if (!raw.length) raw = legacyMessages_(phone); // historial de la v1 aún no migrado
+    raw.sort(function (a, b) { return a.timestamp < b.timestamp ? -1 : 1; });
+    more = raw.length > limit;
+    msgs = raw.slice(-limit).map(msgOut_);
+    if (limit === MSG_CACHE_N) msgCachePut_(phone, msgs);
+  }
   var gate = contact ? bot_allowed_(contact, conv) : { ok: cfgBool_('BOT_ENABLED'), reason: cfgBool_('BOT_ENABLED') ? '' : 'bot_off' };
   return {
     success: true,
@@ -1238,9 +1400,8 @@ function conv_get(p) {
     contact: contact,
     conversation: conv,
     bot: { ok: gate.ok, reason: gate.reason || '', text: gate.ok ? 'El bot responde en este chat.' : bot_reason_text_(gate.reason) },
-    messages: msgs.slice(-limit).map(function (m) {
-      return { id: m.message_id, dir: m.direction, at: m.timestamp, body: m.body, type: m.type, file_url: m.file_url, document_url: m.document_url, audio_url: m.audio_url, status: m.status, source: m.source, agent: m.agent, error: m.error, rule_id: m.rule_id };
-    }),
+    messages: msgs,
+    more: more,
     notes: db_('Notes').filter(function (n) { return n.phone === phone; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }),
     deals: db_('Deals').filter(function (d) { return d.phone === phone; }).sort(function (a, b) { return a.updated_at < b.updated_at ? 1 : -1; }),
     tasks: db_('Tasks').filter(function (t) { return t.phone === phone; }).sort(function (a, b) { return a.due_at < b.due_at ? -1 : 1; })
@@ -2006,6 +2167,7 @@ function tick() {
   } finally {
     setProp_('NEXT_WAKE_AT', computeNextWake_());
     cache.remove('tick_running');
+    finishWrites_();
   }
   return report;
 }
@@ -2035,9 +2197,10 @@ function tick_reminders_() {
   var due = db_('Tasks').filter(function (t) { return t.status === 'open' && String(t.remind) === 'true' && t.due_at && t.due_at <= nowIso && !t.reminded_at; });
   due.forEach(function (t) {
     var u = users.filter(function (x) { return norm_(x.name) === norm_(t.assigned_to) && x.phone; })[0];
-    var targets = u ? [normPhone_(u.phone)] : adminPhones_();
+    var targets = notifyTargets_(u ? [u.phone] : null);
     var who = '';
     if (t.phone) { var c = db_('Contacts').findBy('phone', t.phone); who = '\n👤 ' + contactName_(c, t.phone) + ' (+' + t.phone + ')'; }
+    if (cfg_('NOTIFY_GROUP') && t.assigned_to) who += '\n📌 Para: ' + t.assigned_to;
     var text = '⏰ *Recordatorio*\n' + t.title + who + '\n\nCuando termines: /hecho ' + t.task_id.slice(-6);
     targets.forEach(function (ph) { wa_send_(ph, text, { source: 'system', force: true }); });
     withLock_(function () { var cur = db_('Tasks').get(t.task_id); if (cur) db_('Tasks').patch(cur, { reminded_at: nowIso_() }); });
@@ -2052,7 +2215,7 @@ function tick_digest_() {
   if (hour !== cfgNum_('DIGEST_HOUR', 8) || prop_('LAST_DIGEST') === today) return;
   setProp_('LAST_DIGEST', today);
   var text = cmd_summary_text_(null);
-  adminPhones_().forEach(function (ph) { wa_send_(ph, text, { source: 'system', force: true }); });
+  notifyTargets_().forEach(function (ph) { wa_send_(ph, text, { source: 'system', force: true }); });
 }
 
 function computeNextWake_() {
@@ -2155,6 +2318,12 @@ var CMD_HELP = [
   ]]
 ];
 
+/** Dueño del número del bot (cuando escribe desde su propio WhatsApp). */
+function ownerUser_() {
+  var a = db_('Users').filter(function (u) { return u.role === 'admin' && String(u.active) !== 'false'; })[0];
+  return a ? { name: a.name, role: 'admin', user_id: a.user_id, phone: a.phone } : { name: 'Administrador', role: 'admin', user_id: 'OWNER', phone: ownNumber_() };
+}
+
 function cmd_help_text_() {
   var out = ['*WA Power · comandos*'];
   CMD_HELP.forEach(function (g) {
@@ -2179,6 +2348,8 @@ function cmd_run_(user, text, ctx) {
   } catch (e) {
     reply = '⚠️ ' + e.message;
   }
+  // Una respuesta nunca empieza con "/" (evita que se lea como otro comando)
+  if (reply && /^[\/#!]/.test(reply)) reply = '› ' + reply;
   audit_(me.name, 'whatsapp_command', 'command', cmd, { text: truncate_(raw, 200) });
   if (ctx.reply && ctx.phone && reply) wa_send_(ctx.phone, reply, { source: 'command-reply', force: true });
   return { processed: true, command: cmd, reply: reply };
@@ -2695,7 +2866,7 @@ function cmd_catalog() { return { success: true, groups: CMD_HELP }; }
 
 function analytics_today_() {
   var today = dayKey_(new Date());
-  var msgs = db_('Messages').tail(4000);
+  var msgs = db_('Messages').tail(2500);
   var out = { received: 0, sent: 0, auto: 0, failed: 0 };
   msgs.forEach(function (m) {
     if (dayKey_(m.timestamp) !== today) return;
@@ -2725,6 +2896,10 @@ function analytics_today_() {
 
 /** Todo lo que necesita la pantalla de inicio en una sola llamada. */
 function dashboard_get(p, me) {
+  return cached_('db_' + norm_(me.name), 120, function () { return dashboard_get_(p, me); }, true);
+}
+
+function dashboard_get_(p, me) {
   var t = analytics_today_();
   var contacts = {};
   db_('Contacts').all().forEach(function (c) { contacts[c.phone] = c; });
@@ -2755,10 +2930,16 @@ function dashboard_get(p, me) {
 }
 
 function analytics_get(p) {
+  var d = Math.min(Math.max(parseInt(p.days, 10) || 14, 1), 90);
+  // La analítica pesa: se reutiliza 3 minutos (no hace falta al segundo)
+  return cached_('an_' + d, 180, function () { return analytics_get_({ days: d }); }, false);
+}
+
+function analytics_get_(p) {
   var days = Math.min(Math.max(parseInt(p.days, 10) || 14, 1), 90);
   var tz = tz_();
   var keys = [];
-  for (var i = days - 1; i >= 0; i--) keys.push(Utilities.formatDate(new Date(Date.now() - i * 86400000), tz, 'yyyy-MM-dd'));
+  for (var i = days - 1; i >= 0; i--) keys.push(dayKey_(new Date(Date.now() - i * 86400000)));
   var first = keys[0];
   var series = {};
   keys.forEach(function (k) { series[k] = { day: k, in: 0, out: 0, auto: 0, failed: 0 }; });
@@ -2767,7 +2948,8 @@ function analytics_get(p) {
   var bySource = {};
   var ruleHits = {};
 
-  var msgs = db_('Messages').tail(20000).filter(function (m) { return dayKey_(m.timestamp) >= first; })
+  var tailN = Math.min(20000, 1500 + days * 400);
+  var msgs = db_('Messages').tail(tailN).filter(function (m) { return dayKey_(m.timestamp) >= first; })
     .sort(function (a, b) { return a.timestamp < b.timestamp ? -1 : 1; });
   var waitingSince = {};
   var responseMins = [];
@@ -2777,8 +2959,9 @@ function analytics_get(p) {
     if (!s) return;
     if (m.direction === 'in') {
       s.in++;
-      var dow = parseInt(Utilities.formatDate(new Date(m.timestamp), tz, 'u'), 10) - 1;
-      var hr = parseInt(Utilities.formatDate(new Date(m.timestamp), tz, 'H'), 10);
+      var ld = toLocal_(m.timestamp);
+      var dow = (ld.getUTCDay() + 6) % 7; // lunes = 0
+      var hr = ld.getUTCHours();
       heat[dow][hr]++;
       if (!waitingSince[m.phone]) waitingSince[m.phone] = m.timestamp;
       if (m.rule_id) ruleHits[m.rule_id] = (ruleHits[m.rule_id] || 0) + 1;
@@ -2832,7 +3015,7 @@ function analytics_get(p) {
 function system_health_() {
   var today = dayKey_(new Date());
   var q = db_('Queue').all();
-  var failedToday = db_('Messages').tail(3000).filter(function (m) { return m.direction === 'out' && m.status === 'failed' && dayKey_(m.timestamp) === today; }).length;
+  var failedToday = db_('Messages').tail(1500).filter(function (m) { return m.direction === 'out' && m.status === 'failed' && dayKey_(m.timestamp) === today; }).length;
   var trig;
   try { trig = triggers_status(); } catch (e) { trig = { installed: false, error: e.message }; }
   return {
@@ -2849,13 +3032,21 @@ function system_health_() {
 
 /** Consulta liviana cada 20 s desde el portal: contadores y mensajes nuevos. */
 function poll_get(p, me) {
+  var v = dataVersion_();
+  if (p.v && p.v === v) return { success: true, unchanged: true, v: v, now: nowIso_() };
+  var r = poll_full_(p, me);
+  r.v = v;
+  return r;
+}
+
+function poll_full_(p, me) {
   var since = String(p.since || '');
   var counts = conv_counts_(me);
   var fresh = [];
   if (since) {
     var contacts = {};
     db_('Conversations').all().forEach(function (c) {
-      if (c.last_direction === 'in' && c.last_message_at > since && !isGroup_(c.phone)) fresh.push(c);
+      if (c.last_direction === 'in' && c.last_message_at >= since && !isGroup_(c.phone)) fresh.push(c);
     });
     db_('Contacts').all().forEach(function (c) { contacts[c.phone] = c; });
     fresh = fresh.map(function (c) { return { phone: c.phone, name: contactName_(contacts[c.phone], c.phone), body: c.last_message, at: c.last_message_at }; });
@@ -2976,7 +3167,9 @@ function doGet(e) {
   if (!p.action) {
     return HtmlService.createHtmlOutput('<p style="font-family:sans-serif">WA Power ' + APP_VERSION + ' está funcionando. Abre tu portal para usarlo.</p>');
   }
-  return json_(route_(p));
+  var out = route_(p);
+  finishWrites_();
+  return json_(out);
 }
 
 function doPost(e) {
@@ -2992,9 +3185,11 @@ function doPost(e) {
     for (var j in body) p[j] = body[j];
 
     // Webhook de TextMeBot: sin "action" y con remitente
-    if (!p.action && (p.from !== undefined || p.sender !== undefined)) return json_(webhook_(p, q));
-    return json_(route_(p));
+    var out = (!p.action && (p.from !== undefined || p.sender !== undefined)) ? webhook_(p, q) : route_(p);
+    finishWrites_();
+    return json_(out);
   } catch (err2) {
+    finishWrites_();
     return json_({ success: false, error: err2.message });
   }
 }
@@ -3233,6 +3428,7 @@ function settings_get(p, me) {
     success: true, settings: out, stages: stages_(),
     secrets: { TEXTMEBOT_API_KEY: !!prop_('TEXTMEBOT_API_KEY'), WEBHOOK_SECRET: !!prop_('WEBHOOK_SECRET'), APP_SECRET_TOKEN: !!prop_('APP_SECRET_TOKEN') },
     webhook_url: isAdmin && url ? url + '?key=' + (prop_('WEBHOOK_SECRET') || '') : '',
+    groups: db_('Groups').all().map(function (g) { return { group_id: g.group_id, name: g.name }; }),
     textmebot_webhook_setup: 'https://api.textmebot.com/webhook.php',
     health: system_health_(), users: db_('Users').all().map(function (u) { return { name: u.name, role: u.role, phone: u.phone }; }),
     version: APP_VERSION

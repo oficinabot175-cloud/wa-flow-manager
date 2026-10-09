@@ -63,10 +63,12 @@
     const now = new Date().toISOString();
     setProp_('TEXTMEBOT_API_KEY', 'demo');
     setCfg_('COMPANY_NAME', 'CISESA');
+    setCfg_('BOT_NUMBER', '51943206279');
+    setCfg_('PORTAL_SUBTITLE', 'WhatsApp Corporativo');
     setCfg_('WELCOME_ENABLED', 'true');
     setCfg_('WELCOME_MESSAGE', 'Hola {{first_name}}, gracias por escribir a CISESA. Un asesor te atiende en breve.');
     const sys = { name: 'demo', role: 'admin' };
-    users_save({ name: 'Carlos Bardales', email: 'carlos.bardales@cisesa.com', phone: '943206279', role: 'admin', password: 'demo1234' }, sys);
+    users_save({ name: 'Carlos Bardales', email: 'carlos.bardales@cisesa.com', phone: '999000111', role: 'admin', password: 'demo1234' }, sys);
     users_save({ name: 'Ana Ruiz', phone: '955444333', role: 'agent', password: 'demo1234' }, sys);
     users_save({ name: 'Jorge Salas', phone: '966555444', role: 'supervisor', password: 'demo1234' }, sys);
 

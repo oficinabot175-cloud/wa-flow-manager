@@ -34,8 +34,7 @@
       await this.load();
     },
     async load() {
-      this.data = (await APP.api('campaigns')).data;
-      this.paint();
+      await APP.swr('campaigns', {}, (r) => { this.data = r.data; this.paint(); });
     },
     poll() { if (this.data.some((c) => c.status === 'sending' || c.status === 'scheduled')) this.load().catch(() => {}); },
     paint() {
@@ -225,7 +224,7 @@
       </div>`);
       await this.load();
     },
-    async load() { this.data = (await APP.api('schedules')).data; this.paint(); },
+    async load() { await APP.swr('schedules', {}, (r) => { this.data = r.data; this.paint(); }); },
     paint() {
       const box = document.getElementById('scTable');
       if (!box) return;
@@ -441,7 +440,7 @@
       </div>`);
       await this.load();
     },
-    async load() { this.data = (await APP.api('templates')).data; APP._tplCache = null; this.paint(); },
+    async load() { await APP.swr('templates', {}, (r) => { this.data = r.data; APP._tplCache = null; this.paint(); }); },
     paint() {
       const cats = Array.from(new Set(this.data.map((t) => t.category || 'general')));
       const segs = document.getElementById('tpCats');

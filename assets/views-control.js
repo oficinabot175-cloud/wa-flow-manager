@@ -28,6 +28,7 @@
     },
     async paintTab() {
       const box = document.getElementById('auBody');
+      if (!box) return;
       document.getElementById('ruNewBtn').hidden = this.tab !== 'rules';
       if (this.tab === 'rules') {
         box.innerHTML = String(html`<div class="stack" style="gap:18px">
@@ -72,7 +73,7 @@
         <section class="panel"><div class="panel-head"><h2>Chats sin bot</h2><a class="small" href="#" data-act="go-nobot">Ver en Contactos</a></div><div class="panel-body"><p class="soft small">Los contactos marcados como "Nunca" aparecen con el filtro "Sin bot" en Contactos. Desde ahí puedes devolverlos a lo normal en bloque.</p></div></section>
       </form>`);
     },
-    async loadRules() { this.rules = (await APP.api('rules')).data; this.paintRules(); },
+    async loadRules() { await APP.swr('rules', {}, (r) => { this.rules = r.data; this.paintRules(); }); },
     paintRules() {
       const box = document.getElementById('ruList');
       if (!box) return;
@@ -237,7 +238,9 @@
     title: 'Analítica', min: 'supervisor', days: 14,
     async render(el) {
       this.el = el;
-      const r = await APP.api('analytics', { days: this.days });
+      await APP.swr('analytics', { days: this.days }, (r) => { if (APP.alive(el)) this.paint(el, r); });
+    },
+    paint(el, r) {
       const t = r.totals;
       const botPct = t.out ? Math.round(t.auto * 100 / t.out) : 0;
       const maxHeat = Math.max(1, ...r.heatmap.flat());
@@ -367,6 +370,16 @@
             <form class="row" data-submit="cf-key"><input class="input" type="password" name="v" placeholder="${s.secrets.TEXTMEBOT_API_KEY ? 'Escribe una nueva para reemplazarla' : 'Pega tu API key de TextMeBot'}" autocomplete="off" aria-label="API key de TextMeBot"><button class="btn btn-primary" type="submit">Guardar</button></form>
             <form class="row" data-submit="cf-test"><input class="input" name="phone" placeholder="Número para la prueba (tu celular)" value="${APP.state.user.phone || ''}" inputmode="tel" aria-label="Número de prueba"><button class="btn" type="submit">${icon('send', 'sm')}Enviar mensaje de prueba</button></form>
           </div></section>
+          <section class="panel"><div class="panel-head"><h2>Tu número y los avisos</h2>${s.settings.NOTIFY_GROUP.value ? html`<span class="pill ok">${icon('group', 'sm')}Avisos al grupo</span>` : ''}</div><div class="panel-body stack">
+            <p class="soft small">WhatsApp no te muestra lo que tu propio número se envía a sí mismo. Si el número del bot es tu número personal, crea un grupo en WhatsApp (por ejemplo "WA Power · Avisos", solo contigo o con tu equipo), agrégalo en <a href="#/grupos">Grupos</a> y elígelo aquí: ahí te llegarán los avisos de "pide asesor", los recordatorios de tareas y el resumen diario.</p>
+            <form class="stack" data-submit="cf-own" style="gap:12px">
+              <div class="fields">
+                <label class="field"><span>Número conectado a TextMeBot</span><input class="input" name="BOT_NUMBER" value="${s.settings.BOT_NUMBER.value}" placeholder="51943206279" inputmode="tel"><span class="hint">Se detecta solo con el primer mensaje que llegue. Nunca se le envían mensajes.</span></label>
+                <label class="field"><span>Grupo de avisos</span><select class="select" name="NOTIFY_GROUP"><option value="">Ninguno: avisar al celular de cada usuario</option>${(s.groups || []).map((g) => html`<option value="${g.group_id}" ${s.settings.NOTIFY_GROUP.value === g.group_id ? 'selected' : ''}>${g.name || g.group_id}</option>`)}</select><span class="hint">${(s.groups || []).length ? 'En ese grupo también puedes escribir comandos como /hoy o /p.' : 'Primero agrega el grupo en la sección Grupos.'}</span></label>
+              </div>
+              <div><button class="btn btn-primary" type="submit">Guardar</button></div>
+            </form>
+          </div></section>
           <section class="panel"><div class="panel-head"><h2>Mensajes entrantes</h2>${h.webhook_secret ? html`<span class="pill ok">${icon('shield', 'sm')}Protegido con clave</span>` : html`<span class="pill lamp">Sin clave</span>`}</div><div class="panel-body stack">
             <p class="soft small">Para que los mensajes de tus clientes lleguen a la bandeja, TextMeBot debe avisar a esta dirección. Incluye una clave: sin ella nadie puede inyectar mensajes falsos.</p>
             ${s.webhook_url ? html`<div class="copy-field"><input class="input" readonly value="${s.webhook_url}" id="whUrl" aria-label="URL del webhook"><button class="btn" type="button" data-act="cf-copy">${icon('copy', 'sm')}Copiar</button></div>` : html`<div class="callout lamp">${icon('alert', 'sm')}<span>Publica la aplicación web en Apps Script para obtener la dirección.</span></div>`}
@@ -391,7 +404,7 @@
         const s = await APP.api('settings');
         const f = (k, label, type, hint, extra) => html`<label class="field"><span>${label}</span><input class="input" name="${k}" type="${type || 'text'}" value="${s.settings[k].value}" ${extra || ''}>${hint ? html`<span class="hint">${hint}</span>` : ''}</label>`;
         box.innerHTML = String(html`<form class="panel" data-submit="cf-general"><div class="panel-body stack" style="padding-top:16px">
-          <div class="fields">${f('COMPANY_NAME', 'Nombre de la empresa', 'text', 'Se usa en {{company_name}}.')}${f('CURRENCY', 'Moneda', 'text', 'Ej. S/ o US$')}</div>
+          <div class="fields">${f('PORTAL_SUBTITLE', 'Nombre bajo el logo del portal', 'text', 'Ej. WhatsApp Corporativo')}${f('COMPANY_NAME', 'Empresa en los mensajes', 'text', 'Lo que ven tus clientes con {{company_name}}.')}${f('CURRENCY', 'Moneda', 'text', 'Ej. S/ o US$')}</div>
           <div class="fields">${f('DEFAULT_TIMEZONE', 'Zona horaria', 'text', 'America/Lima')}${f('DEFAULT_COUNTRY_CODE', 'Código de país', 'text', 'Se agrega a números de 9 dígitos.')}</div>
           <div class="fields">${f('RATE_LIMIT_SECONDS', 'Pausa entre mensajes (s)', 'number', 'TextMeBot recomienda 5 o más.', 'min="5"')}${f('CAMPAIGN_DELAY_SECONDS', 'Pausa entre mensajes de campaña (s)', 'number', 'Más pausa = menos riesgo de bloqueo. Recomendado: 8 o más.')}</div>
           <div class="fields"><label class="field"><span>Resumen diario por WhatsApp</span><select class="select" name="DIGEST_ENABLED"><option value="true" ${s.settings.DIGEST_ENABLED.value === 'true' ? 'selected' : ''}>Enviar a los administradores</option><option value="false" ${s.settings.DIGEST_ENABLED.value !== 'true' ? 'selected' : ''}>No enviar</option></select></label>${f('DIGEST_HOUR', 'Hora del resumen (0 a 23)', 'number', '', 'min="0" max="23"')}</div>
@@ -421,7 +434,12 @@
         const u = APP.state.user;
         box.innerHTML = String(html`<div class="stack" style="gap:18px">
           <section class="panel"><div class="panel-head"><h2>Tu sesión</h2></div><div class="panel-body"><dl class="kv" style="grid-template-columns:140px 1fr"><dt>Usuario</dt><dd>${u.name}</dd><dt>Rol</dt><dd>${APP.labels.role[u.role] || u.role}</dd><dt>Servidor</dt><dd class="small" style="overflow-wrap:anywhere">${APP.state.demo ? 'Demo en este navegador' : APP.state.url}</dd></dl></div></section>
-          <section class="panel"><div class="panel-head"><h2>Avisos del navegador</h2></div><div class="panel-body stack"><p class="soft small">Recibe una notificación cuando llega un mensaje y tienes el portal en otra pestaña.</p><div><button class="btn" type="button" data-act="cf-notif">${window.Notification && Notification.permission === 'granted' ? 'Avisos activados' : 'Activar avisos'}</button></div></div></section>
+          <section class="panel"><div class="panel-head"><h2>Apariencia</h2></div><div class="panel-body"><div class="seg" role="group" aria-label="Tema">${[['', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']].map((o) => html`<button type="button" data-act="cf-theme" data-v="${o[0]}" aria-pressed="${APP.getTheme() === o[0] ? 'true' : 'false'}">${o[1]}</button>`)}</div><p class="hint" style="margin-top:8px">Automático sigue el modo claro u oscuro de tu iPhone o computadora.</p></div></section>
+          <section class="panel"><div class="panel-head"><h2>Avisos en este dispositivo</h2></div><div class="panel-body stack">
+            <div class="setting" style="padding:0"><div><h3>Sonido al llegar un mensaje</h3><p class="desc">Un tono corto cuando escribe un cliente.</p></div><label class="switch"><input type="checkbox" data-change="cf-sound" ${APP.soundOn() ? 'checked' : ''}><span class="track"></span><span class="sr">Sonido</span></label></div>
+            <div class="setting" style="padding:0;border:0"><div><h3>Notificaciones</h3><p class="desc">Aviso del sistema cuando llega un mensaje y el portal está en otra pestaña.</p></div><button class="btn" type="button" data-act="cf-notif">${window.Notification && Notification.permission === 'granted' ? 'Activadas' : 'Activar'}</button></div>
+          </div></section>
+          <section class="panel"><div class="panel-head"><h2>Usar como app en el iPhone</h2></div><div class="panel-body"><p class="soft small">Abre el portal en Safari › botón Compartir › <strong>Agregar a inicio</strong>. Se abrirá a pantalla completa, como una app. En Android: menú ⋮ › <strong>Agregar a la pantalla principal</strong>.</p></div></section>
         </div>`);
       }
     },
@@ -490,6 +508,13 @@
       async 'cf-trig'() { if (await APP.try('installTriggers', {}, (r) => r.message)) this.paint(); },
       async 'cf-tick'(el) { el.disabled = true; const r = await APP.try('runTick', {}); el.disabled = false; if (r) { const x = r.report || {}; APP.toast(x.skipped ? 'Nada pendiente por ahora.' : `Revisión lista: ${x.sent || 0} enviados, ${x.schedules || 0} programados, ${x.reminders || 0} recordatorios.`); this.paint(); } },
       async 'cf-general'(form) { if (await APP.try('saveSettings', { values: APP.formData(form) }, 'Cambios guardados.')) APP.loadMeta(); },
+      'cf-theme'(el) { APP.setTheme(el.dataset.v); APP.$$('[data-act="cf-theme"]').forEach((b) => b.setAttribute('aria-pressed', b === el ? 'true' : 'false')); },
+      'cf-sound'(el) { try { localStorage.setItem('wap_sound', el.checked ? 'on' : 'off'); } catch (e) {} if (el.checked) APP.chime(); },
+      async 'cf-own'(form) {
+        const v = { BOT_NUMBER: form.BOT_NUMBER.value.replace(/\D/g, ''), NOTIFY_GROUP: form.NOTIFY_GROUP.value };
+        if (v.BOT_NUMBER.length === 9) v.BOT_NUMBER = '51' + v.BOT_NUMBER;
+        if (await APP.try('saveSettings', { values: v }, v.NOTIFY_GROUP ? 'Listo: los avisos llegarán al grupo.' : 'Guardado.')) { await APP.loadMeta(); this.paint(); }
+      },
       'cf-notif'(el) {
         if (!window.Notification) return APP.toast('Este navegador no permite avisos.', 'error');
         Notification.requestPermission().then((p) => { el.textContent = p === 'granted' ? 'Avisos activados' : 'Activar avisos'; APP.toast(p === 'granted' ? 'Avisos activados.' : 'El navegador bloqueó los avisos. Actívalos en la configuración del sitio.', p === 'granted' ? '' : 'error'); });

@@ -44,7 +44,9 @@
       await this.load();
     },
     async load() {
-      const r = await APP.api('contacts', { q: this.q, tag: this.tag, status: this.status, limit: 400 });
+      await APP.swr('contacts', { q: this.q, tag: this.tag, status: this.status, limit: 400 }, (r) => this.onData(r));
+    },
+    onData(r) {
       this.data = r.data; this.total = r.total; this.tags = r.tags;
       const tagSel = document.getElementById('ctTag');
       if (tagSel) tagSel.innerHTML = String(html`<option value="">Todas las etiquetas</option>${Object.keys(r.tags).sort().map((t) => html`<option value="${t}" ${this.tag === t ? 'selected' : ''}>${t} (${r.tags[t]})</option>`)}`);
@@ -228,9 +230,10 @@
       await this.load();
     },
     async load() {
-      const r = await APP.api('deals', { q: this.q, owner: this.owner });
-      this.data = r.data; this.stages = r.stages; this.won = r.won_stage; this.lost = r.lost_stage;
-      this.paint();
+      await APP.swr('deals', { q: this.q, owner: this.owner }, (r) => {
+        this.data = r.data; this.stages = r.stages; this.won = r.won_stage; this.lost = r.lost_stage;
+        this.paint();
+      });
     },
     paint() {
       const board = document.getElementById('board');
@@ -358,9 +361,7 @@
       await this.load();
     },
     async load() {
-      const r = await APP.api('tasks', { mine: this.mine ? 'true' : '' });
-      this.data = r.data;
-      this.paint();
+      await APP.swr('tasks', { mine: this.mine ? 'true' : '' }, (r) => { this.data = r.data; this.paint(); });
     },
     paint() {
       const box = document.getElementById('tkList');

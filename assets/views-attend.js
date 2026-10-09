@@ -122,19 +122,19 @@
     title: 'Mesa de atención',
     async render(el) {
       this.el = el;
-      const d = await APP.api('dashboard');
-      this.data = d;
-      this.paint();
+      await APP.swr('dashboard', {}, (d) => { if (!APP.alive(el)) return; this.data = d; this.paint(); });
     },
-    poll() { if (this.el && this.el.isConnected) APP.api('dashboard').then((d) => { this.data = d; this.paint(); }).catch(() => {}); },
+    poll() { if (APP.alive(this.el)) APP.swr('dashboard', {}, (d) => { if (!APP.alive(this.el)) return; this.data = d; this.paint(); }).catch(() => {}); },
+    tick() { if (APP.alive(this.el) && this.data) this.paint(); },
     paint() {
+      if (!APP.alive(this.el)) return;
       const d = this.data, t = d.today, q = d.queue, h = d.health;
       const first = (d.me && d.me.name ? d.me.name : '').split(' ')[0];
       const lede = q.length
         ? html`${F.plural(t.waiting, 'persona espera', 'personas esperan')} respuesta · la más antigua hace <span class="wait ${F.waitMin(q[0].waiting_since) >= 30 ? 'hot' : ''}">${F.wait(q[0].waiting_since)}</span>`
         : 'Nadie espera respuesta en este momento.';
-      const openVal = d.pipeline.filter((p) => p.stage !== APP.meta.settings.settings.WON_STAGE.value && p.stage !== APP.meta.settings.settings.LOST_STAGE.value);
-      const won = APP.meta.settings.settings.WON_STAGE.value, lost = APP.meta.settings.settings.LOST_STAGE.value;
+      const S0 = (APP.meta.settings && APP.meta.settings.settings) || {};
+      const won = (S0.WON_STAGE || {}).value || 'Ganado', lost = (S0.LOST_STAGE || {}).value || 'Perdido';
       const healthRows = [
         [h.api_key, 'TextMeBot conectado', 'Falta la API key', 'configuracion'],
         [h.triggers && h.triggers.installed && h.triggers.healthy !== false, 'Envíos automáticos activos', h.triggers && h.triggers.installed ? 'Sin actividad reciente' : 'Proceso automático apagado', 'configuracion'],
@@ -203,6 +203,7 @@
   });
 
   // ══ Bandeja ═══════════════════════════════════════════════════════════
+  const MEDIA = { image: '📷 Foto', audio: '🎤 Nota de voz', video: '🎥 Video', sticker: '💟 Sticker', document: '📄 Documento', location: '📍 Ubicación', contact: '👤 Contacto', media: '📎 Archivo multimedia' };
   const FILTERS = [['open', 'Abiertas'], ['waiting', 'Sin responder', 'lamp'], ['human', 'Piden asesor'], ['mine', 'Mías']];
   const MORE = [['unread', 'Sin leer'], ['pending', 'Pendientes'], ['resolved', 'Atendidas'], ['all', 'Todas']];
 
@@ -224,6 +225,13 @@
         <aside class="profile" id="profilePane" aria-label="Ficha del contacto"></aside>
       </div>`);
       this.paintEmptyChat();
+      let hoverT = null;
+      el.querySelector('#convList').addEventListener('mouseover', (e) => {
+        const c = e.target.closest('.conv');
+        if (!c || c.dataset.phone === this.phone) return;
+        clearTimeout(hoverT);
+        hoverT = setTimeout(() => APP.prefetch('conversation', { phone: c.dataset.phone }), 140);
+      });
       if (!this.tpls) APP.api('templates', { status: 'active' }).then((r) => { this.tpls = r.data; }).catch(() => { this.tpls = []; });
       await this.loadList();
       if (this.phone) this.openChat(this.phone);
@@ -232,12 +240,16 @@
     root() { return document.getElementById('inboxRoot'); },
 
     async loadList(silent) {
-      let r;
-      try { r = await APP.api('conversations', { filter: this.filter, q: this.q }); }
-      catch (e) { if (!silent) APP.toast(e.message, 'error'); return; }
-      this.list = r.data; this.counts = r.counts;
-      this.paintChips(); this.paintList();
+      const f = this.filter, q = this.q;
+      try {
+        await APP.swr('conversations', { filter: f, q: q }, (r) => {
+          if (f !== this.filter || q !== this.q || !this.root()) return;
+          this.list = r.data; this.counts = r.counts;
+          this.paintChips(); this.paintList();
+        });
+      } catch (e) { if (!silent) APP.toast(e.message, 'error'); }
     },
+    tick() { if (this.root()) this.paintList(); },
     paintChips() {
       const c = this.counts;
       const n = { open: c.all - c.resolved, waiting: c.waiting, human: c.human, unread: c.unread, mine: c.mine, pending: c.pending, resolved: c.resolved, all: c.all };
@@ -286,16 +298,25 @@
       root.classList.add('show-chat');
       root.classList.remove('no-profile');
       APP.$$('.conv', root).forEach((x) => x.classList.toggle('active', x.dataset.phone === phone));
-      if (!silent) document.getElementById('chatPane').innerHTML = '<div class="chat-empty"><div class="spinner"></div></div>';
+      const cachedChat = APP.cacheGet('conversation', { phone });
+      if (!silent && !cachedChat) {
+        const item = this.list.find((x) => x.phone === phone);
+        document.getElementById('chatPane').innerHTML = String(html`<header class="chat-head"><button class="icon-btn back-btn" type="button" data-act="back" aria-label="Volver">${icon('left')}</button>${APP.avatar(item ? item.name : phone)}<div class="who"><strong>${item ? item.name : F.phone(phone)}</strong><span>Cargando conversación…</span></div></header><div class="chat-scroll"><div class="chat-empty"><div class="spinner"></div></div></div>`);
+      }
+      const show = (r) => {
+        if (this.phone !== phone || !this.root()) return;
+        this.chat = r;
+        this.older = [];
+        APP.profileCtx = { phone: r.phone, contact: r.contact, deals: r.deals, reload: () => { APP.cacheClear(); this.openChat(r.phone, true); } };
+        const sameChat = document.getElementById('compText') && document.getElementById('chatPane').dataset.phone === phone;
+        this.paintChat(sameChat ? this.readComposer() : null);
+        document.getElementById('chatPane').dataset.phone = phone;
+        document.getElementById('profilePane').innerHTML = String(APP.profileHtml(r, { inInbox: true }));
+      };
       let r;
-      try { r = await APP.api('conversation', { phone }); }
+      try { r = await APP.swr('conversation', { phone }, show); }
       catch (e) { APP.toast(e.message, 'error'); return; }
       if (this.phone !== phone) return;
-      this.chat = r;
-      APP.profileCtx = { phone: r.phone, contact: r.contact, deals: r.deals, reload: () => this.openChat(r.phone, true) };
-      const draft = silent && document.getElementById('compText') ? this.readComposer() : null;
-      this.paintChat(draft);
-      document.getElementById('profilePane').innerHTML = String(APP.profileHtml(r, { inInbox: true }));
       const item = this.list.find((x) => x.phone === phone);
       if (item && item.unread) {
         item.unread = 0;
@@ -315,7 +336,8 @@
       const st = cv.status === 'active' || !cv.status ? 'open' : cv.status;
       const dnc = c.do_not_contact === 'true';
       let lastDay = '', rows = [];
-      r.messages.forEach((m) => {
+      if (r.more) rows.push(html`<button class="btn btn-sm load-older" type="button" data-act="older">${icon('refresh', 'sm')}Ver mensajes anteriores</button>`);
+      (this.older || []).concat(r.messages).forEach((m) => {
         const day = F.day(m.at);
         if (day !== lastDay) { rows.push(html`<div class="day-sep">${day}</div>`); lastDay = day; }
         rows.push(this.bubble(m));
@@ -352,10 +374,9 @@
               <button class="icon-btn" type="button" data-act="qr-toggle" title="Respuestas rápidas" aria-label="Respuestas rápidas">${icon('template')}</button>
               <button class="icon-btn" type="button" data-act="comp-extra" title="Adjuntar o programar" aria-label="Adjuntar o programar">${icon('clip')}</button>
             </div>
-            <textarea id="compText" rows="1" placeholder="Escribe un mensaje. Usa / para respuestas rápidas" aria-label="Mensaje" data-input="comp-input" data-keydown="comp-key" ${dnc ? 'disabled' : ''}>${draft ? draft.text : ''}</textarea>
+            <textarea id="compText" rows="1" placeholder="Mensaje · / para respuestas rápidas" title="Enter envía · Shift + Enter, nueva línea · {{first_name}} pone el nombre del cliente" aria-label="Mensaje" data-input="comp-input" data-keydown="comp-key" ${dnc ? 'disabled' : ''}>${draft ? draft.text : ''}</textarea>
             <button class="btn btn-primary" type="button" data-act="comp-send" id="compSend" ${dnc ? 'disabled' : ''}>${icon('send')}<span class="hide-sm">Enviar</span></button>
           </div>
-          <div class="composer-note">Enter envía · Shift + Enter, nueva línea · {{first_name}} pone el nombre del cliente</div>
         </div>`);
       const sc = document.getElementById('chatScroll');
       sc.scrollTop = sc.scrollHeight;
@@ -365,7 +386,7 @@
       const out = m.dir === 'out', failed = m.status === 'failed', auto = out && m.source === 'auto';
       const src = out ? [APP.labels.source[m.source] || '', m.agent && m.source !== 'auto' ? m.agent : ''].filter(Boolean).join(' · ') : '';
       return html`<div class="bubble ${out ? 'out' : ''} ${auto ? 'auto' : ''} ${failed ? 'failed' : ''} ${m.pending ? 'pending' : ''}">
-        ${m.body ? html`<div class="wa-text">${APP.wa(m.body)}</div>` : ''}
+        ${m.body ? html`<div class="wa-text">${APP.wa(m.body)}</div>` : (!m.file_url && !m.document_url && !m.audio_url && m.type && m.type !== 'text' ? html`<div class="media-note">${MEDIA[m.type] || MEDIA.media}<span>Ábrelo en tu WhatsApp para verlo</span></div>` : '')}
         ${m.file_url ? html`<a class="att" href="${APP.safeUrl(m.file_url)}" target="_blank" rel="noopener">${icon('clip', 'sm')}Imagen o archivo</a>` : ''}
         ${m.document_url ? html`<a class="att" href="${APP.safeUrl(m.document_url)}" target="_blank" rel="noopener">${icon('template', 'sm')}Documento</a>` : ''}
         ${failed ? html`<div class="err">No se entregó: ${m.error || 'error desconocido'} · <a href="#" data-act="retry" data-id="${m.id}">Reintentar</a></div>` : ''}
@@ -460,6 +481,21 @@
       'filter-more'(el) { this.filter = el.value || 'open'; this.loadList(); },
       q: APP.debounce(function (el) { const v = APP.views.bandeja; v.q = el.value.trim(); v.loadList(); }, 250),
       'open-conv'(el) { this.openChat(el.dataset.phone); },
+      async older() {
+        const r = this.chat, all = (this.older || []).concat(r.messages);
+        if (!all.length) return;
+        const btn = document.querySelector('.load-older');
+        if (btn) { btn.disabled = true; btn.textContent = 'Cargando…'; }
+        const res = await APP.try('conversation', { phone: this.phone, before: all[0].at });
+        if (!res || this.chat !== r) return;
+        const sc = document.getElementById('chatScroll');
+        const fromBottom = sc.scrollHeight - sc.scrollTop;
+        this.older = res.messages.concat(this.older || []);
+        r.more = res.more;
+        this.paintChat(this.readComposer());
+        sc.scrollTop = document.getElementById('chatScroll').scrollHeight - fromBottom;
+        const sc2 = document.getElementById('chatScroll'); sc2.scrollTop = sc2.scrollHeight - fromBottom;
+      },
       back() {
         this.phone = '';
         history.replaceState(null, '', '#/bandeja');
