@@ -229,9 +229,47 @@
   // ── Servicios de red y web ─────────────────────────────────────────────
   G.__sent = [];
   G.__textmebotFail = false;
+  // Groq simulado: respuestas coherentes para pruebas y para la demo (no hay internet hacia Groq aquí)
+  G.__groqCalls = [];
+  G.__groqFail = 0;
+  function groqFake(u, opts) {
+    var body = opts.payload && typeof opts.payload === 'string' ? JSON.parse(opts.payload) : (opts.payload || {});
+    G.__groqCalls.push({ path: u.pathname, body: body });
+    var respond = function (code, obj) { return { getResponseCode: function () { return code; }, getContentText: function () { return JSON.stringify(obj); }, getBlob: function () { return {}; } }; };
+    if (G.__groqFail) return respond(G.__groqFail, { error: { message: G.__groqFail === 401 ? 'Invalid API Key' : 'Rate limit reached' } });
+    if (/\/models$/.test(u.pathname)) return respond(200, { data: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'meta-llama/llama-4-scout-17b-16e-instruct', 'whisper-large-v3-turbo'].map(function (id) { return { id: id, active: true }; }) });
+    if (/transcriptions$/.test(u.pathname)) return respond(200, { text: 'Hola, quería saber el precio de la fibra de 300 megas' });
+    var msgs = body.messages || [];
+    var sys = String((msgs[0] || {}).content || '');
+    var last = msgs.slice().reverse().filter(function (m) { return m.role === 'user'; })[0] || {};
+    var hasImg = Array.isArray(last.content);
+    var text = hasImg ? last.content[0].text : String(last.content || '');
+    var t = text.toLowerCase();
+    var name = (/Cliente: ([^·\n]+)/.exec(sys) || [])[1] || '';
+    var first = name.trim().split(' ')[0];
+    var company = (/asistente virtual de ([^ ]+) en WhatsApp/.exec(sys) || [])[1] || 'la empresa';
+    var draft = /BORRADOR/.test(sys);
+    if (/analista comercial/.test(sys)) return respond(200, { choices: [{ message: { content: JSON.stringify({ summary: 'El cliente consultó por planes de fibra y pidió precio para su distrito. Mostró interés en contratar esta semana.', next_step: 'Enviar la cotización del plan de 300 Mbps y confirmar cobertura.', intent: 'venta', sentiment: 'positivo' }) } }] });
+    var handoff = /asesor|humano|persona|reclamo|queja|molest|pésimo|pesimo/.test(t);
+    var intent = handoff ? (/reclamo|queja|molest|pésimo|pesimo/.test(t) ? 'reclamo' : 'soporte') : (/precio|cu[aá]nto|plan|fibra|internet|portabilidad|cotiz/.test(t) ? 'venta' : 'consulta');
+    var hi = draft ? 'Hola ' + (first || '') + ', ' : '¡Hola' + (first ? ' ' + first : '') + '! Soy el asistente virtual de ' + company + '. ';
+    var reply;
+    if (hasImg) reply = hi + 'Veo la imagen que enviaste: parece una captura de pantalla. Cuéntame qué necesitas con eso y te ayudo.';
+    else if (handoff) reply = hi + 'Entiendo, te paso con un asesor de nuestro equipo para que te atienda personalmente.';
+    else if (intent === 'venta') reply = hi + 'Con gusto te ayudo con los planes de *internet de fibra*. ¿Me confirmas tu distrito para revisar la cobertura y enviarte la mejor opción?';
+    else reply = hi + '¿En qué te puedo ayudar hoy?';
+    var out = { reply: reply, handoff: handoff, intent: intent, sentiment: handoff ? 'negativo' : 'positivo', tags: [intent], summary: 'Cliente ' + (first || '') + ': ' + text.slice(0, 80) };
+    return respond(200, { choices: [{ message: { content: JSON.stringify(out) } }], usage: { total_tokens: 420 } });
+  }
+
   G.UrlFetchApp = {
-    fetch: function (url) {
+    fetch: function (url, opts) {
       var u = new URL(url);
+      if (u.hostname === 'api.groq.com') return groqFake(u, opts || {});
+      if (u.hostname !== 'api.textmebot.com') {
+        // Descarga de un archivo cualquiera (por ejemplo, una nota de voz para transcribir)
+        return { getResponseCode: function () { return 200; }, getContentText: function () { return ''; }, getBlob: function () { return { name: u.pathname }; } };
+      }
       if (u.searchParams.get('group_info')) {
         var code = u.searchParams.get('group_info');
         var gid = '1203630' + String(Math.abs(code.split('').reduce(function (h, c) { return (h * 31 + c.charCodeAt(0)) | 0; }, 7))).padStart(11, '0').slice(0, 11) + '@g.us';

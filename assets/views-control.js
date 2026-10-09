@@ -21,7 +21,7 @@
           <div><h1>Automatización</h1><p class="lede">Qué responde el bot, cuándo avisa a un asesor y qué hace fuera de horario.</p></div>
           <button class="btn btn-primary" type="button" data-act="ru-new" id="ruNewBtn">${icon('plus')}Nueva regla</button>
         </header>
-        <div class="tabs" role="tablist"><button type="button" role="tab" data-act="au-tab" data-t="rules" aria-selected="${this.tab === 'rules'}">Reglas de respuesta</button><button type="button" role="tab" data-act="au-tab" data-t="scope" aria-selected="${this.tab === 'scope'}">A quién responde</button><button type="button" role="tab" data-act="au-tab" data-t="bot" aria-selected="${this.tab === 'bot'}">Bienvenida y horario</button></div>
+        <div class="tabs" role="tablist"><button type="button" role="tab" data-act="au-tab" data-t="rules" aria-selected="${this.tab === 'rules'}">Reglas de respuesta</button><button type="button" role="tab" data-act="au-tab" data-t="ai" aria-selected="${this.tab === 'ai'}">✨ Asistente IA</button><button type="button" role="tab" data-act="au-tab" data-t="scope" aria-selected="${this.tab === 'scope'}">A quién responde</button><button type="button" role="tab" data-act="au-tab" data-t="bot" aria-selected="${this.tab === 'bot'}">Bienvenida y horario</button></div>
         <div id="auBody"></div>
       </div>`);
       await this.paintTab();
@@ -38,8 +38,75 @@
           <section class="panel"><div class="panel-head"><h2>Reglas</h2><span class="muted">Se revisan en orden: gana la primera que coincide</span></div><div id="ruList"><div class="loading"><div class="spinner"></div></div></div></section>
         </div>`);
         await this.loadRules();
-      } else if (this.tab === 'scope') this.paintScope();
+      } else if (this.tab === 'ai') this.paintAI();
+      else if (this.tab === 'scope') this.paintScope();
       else this.paintBot();
+    },
+    paintAI() {
+      const box = document.getElementById('auBody');
+      if (!box) return;
+      const admin = APP.can('admin');
+      const dis = admin ? '' : 'disabled';
+      const st = (APP.meta.settings || {}).secrets || {};
+      const scope = sv('AI_SCOPE') || 'new';
+      const models = this.aiModels;
+      const modelField = (k, label, list, hint) => html`<label class="field"><span>${label}</span>${list && list.length
+        ? html`<select class="select" name="${k}" ${dis}>${list.includes(sv(k)) ? '' : html`<option selected>${sv(k)}</option>`}${list.map((m) => html`<option ${m === sv(k) ? 'selected' : ''}>${m}</option>`)}</select>`
+        : html`<input class="input" name="${k}" value="${sv(k)}" ${dis}>`}<span class="hint">${hint}</span></label>`;
+      box.innerHTML = String(html`<div class="stack" style="gap:18px">
+        ${admin ? '' : html`<div class="callout lamp">${icon('alert', 'sm')}<span>Solo un administrador puede cambiar el asistente IA. Puedes usar el probador.</span></div>`}
+        <form class="stack" style="gap:18px" data-submit="ai-save" id="aiForm">
+        <section class="panel">
+          <div class="setting"><div><h3>✨ Asistente IA</h3><p class="desc">Lee e interpreta cada mensaje (texto, foto o nota de voz), responde con los datos de tu negocio, etiqueta al cliente y deriva a un asesor cuando hace falta. Funciona con Groq.</p></div>
+            <label class="switch"><input type="checkbox" name="AI_ENABLED" ${sv('AI_ENABLED') === 'true' ? 'checked' : ''} ${dis}><span class="track"></span><span class="sr">Asistente IA encendido</span></label></div>
+          <div class="setting"><div><h3>API key de Groq</h3><p class="desc">${st.GROQ_API_KEY ? 'Guardada de forma segura en Apps Script (nunca vuelve al navegador).' : 'Créala gratis en console.groq.com › API Keys y pégala aquí.'}</p></div>
+            <span class="pill ${st.GROQ_API_KEY ? 'ok' : 'alert'}">${st.GROQ_API_KEY ? 'Conectada' : 'Falta'}</span>
+            ${admin ? html`<div class="body row wrap"><input class="input" type="password" id="groqKey" placeholder="${st.GROQ_API_KEY ? 'Pega una nueva para reemplazarla' : 'gsk_…'}" autocomplete="off" style="flex:1;min-width:220px" aria-label="API key de Groq"><button class="btn" type="button" data-act="ai-key">Guardar key</button><button class="btn btn-ghost" type="button" data-act="ai-models">${icon('refresh', 'sm')}Probar conexión</button></div>` : ''}</div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>Cuándo responde</h2></div>
+          <div class="panel-body stack">
+            ${[['new', 'Conversaciones nuevas', 'Atiende el primer mensaje de cada conversación (contacto nuevo o tras varias horas sin hablar) y sigue hasta que un asesor responda o la IA derive.'], ['fallback', 'Cuando ninguna regla responde', 'Tus reglas de palabras clave van primero; la IA cubre todo lo demás.'], ['all', 'Todos los mensajes', 'La IA responde todo, salvo la baja (STOP) y los chats que tome un asesor.']].map((o) => html`<label class="radio-card ${scope === o[0] ? 'on' : ''}"><input type="radio" name="AI_SCOPE" value="${o[0]}" ${scope === o[0] ? 'checked' : ''} ${dis} data-change="ai-scope"><span><strong>${o[1]}</strong><span class="soft small">${o[2]}</span></span></label>`)}
+            <div class="fields">
+              <label class="field"><span>Horario de la IA</span><select class="select" name="AI_HOURS" ${dis}>${[['always', 'Siempre'], ['outside', 'Solo fuera del horario de atención'], ['inside', 'Solo en horario de atención']].map((o) => html`<option value="${o[0]}" ${sv('AI_HOURS') === o[0] ? 'selected' : ''}>${o[1]}</option>`)}</select></label>
+              <label class="field"><span>Máximo de respuestas por chat al día</span><input class="input" type="number" min="0" name="AI_MAX_PER_CHAT" value="${sv('AI_MAX_PER_CHAT')}" ${dis}><span class="hint">Al llegar al tope, el chat queda para un asesor. 0 = sin tope.</span></label>
+              <label class="field"><span>Horas para considerar "conversación nueva"</span><input class="input" type="number" min="1" name="AI_NEW_GAP_HOURS" value="${sv('AI_NEW_GAP_HOURS')}" ${dis}></label>
+            </div>
+          </div></section>
+        <section class="panel"><div class="panel-head"><h2>Qué sabe y cómo habla</h2><span class="muted">la IA solo usa esta información</span></div>
+          <div class="panel-body stack">
+            <label class="field"><span>Personalidad</span><textarea class="textarea" name="AI_PERSONA" rows="3" ${dis}>${sv('AI_PERSONA')}</textarea></label>
+            <label class="field"><span>Información del negocio</span><textarea class="textarea" name="AI_KNOWLEDGE" rows="14" ${dis} style="font-size:13.5px">${sv('AI_KNOWLEDGE')}</textarea><span class="hint">Productos, precios que sí puede decir, horarios, dirección, medios de pago, preguntas frecuentes y lo que NO debe hacer. Si algo no está aquí, la IA no lo inventa: deriva a un asesor.</span></label>
+            <div class="fields">
+              <label class="field"><span>Mensaje al derivar a un asesor</span><input class="input" name="AI_HANDOFF_MESSAGE" value="${sv('AI_HANDOFF_MESSAGE')}" ${dis}></label>
+              <label class="field"><span>Etiquetas que puede poner</span><input class="input" name="AI_TAGS" value="${sv('AI_TAGS')}" ${dis}><span class="hint">La primera que elija se guarda como intención del cliente.</span></label>
+              <label class="field"><span>Firma al inicio (opcional)</span><input class="input" name="AI_SIGN" value="${sv('AI_SIGN')}" placeholder="🤖" ${dis}></label>
+            </div>
+            <label class="check"><input type="checkbox" name="AI_CREATE_DEALS" ${sv('AI_CREATE_DEALS') === 'true' ? 'checked' : ''} ${dis}>Crear una oportunidad cuando detecte intención de compra</label>
+          </div></section>
+        <section class="panel"><div class="panel-head"><h2>Modelos de Groq</h2><span class="muted">${models ? 'lista actualizada desde Groq' : 'pulsa "Probar conexión" para ver los disponibles'}</span></div>
+          <div class="panel-body"><div class="fields">
+            ${modelField('AI_MODEL', 'Texto', models && models.chat, 'Recomendado: llama-3.3-70b-versatile.')}
+            ${modelField('AI_VISION_MODEL', 'Imágenes', models && models.vision, 'Debe ser un modelo con visión (Llama 4).')}
+            ${modelField('AI_AUDIO_MODEL', 'Notas de voz', models && models.audio, 'Whisper transcribe el audio.')}
+          </div></div></section>
+        ${admin ? html`<div class="row" style="justify-content:flex-end"><button class="btn btn-primary" type="submit">Guardar asistente IA</button></div>` : ''}
+        </form>
+        <section class="panel"><div class="panel-head"><h2>Probar la IA</h2><span class="muted">no envía nada</span></div><div class="panel-body stack">
+          <form class="stack" data-submit="ai-test" style="gap:10px">
+            <textarea class="textarea" name="message" rows="2" placeholder="Escribe lo que mandaría un cliente: Hola, ¿tienen fibra en Surco? ¿cuánto cuesta?" aria-label="Mensaje de prueba"></textarea>
+            <div class="row wrap"><input class="input" name="image_url" type="url" placeholder="URL de una imagen (opcional)" style="flex:1;min-width:220px" aria-label="Imagen de prueba"><button class="btn btn-primary" type="submit">${icon('sparkle', 'sm')}Probar</button></div>
+          </form>
+          <div id="aiOut"></div>
+        </div></section>
+        <section class="panel"><div class="panel-head"><h2>Cómo detener o limitar a la IA</h2></div><div class="panel-body">
+          <ol class="decide">
+            <li><strong>Para todos</strong><span>Apaga el interruptor de arriba o escribe <code>/ia off</code> desde WhatsApp.</span></li>
+            <li><strong>En un chat</strong><span>En la ficha del cliente: Asistente IA › Nunca. Por WhatsApp: <code>/ia 2 off</code>.</span></li>
+            <li><strong>Al responder tú</strong><span>Si un asesor escribe en el chat, la IA se calla (toma humana).</span></li>
+            <li><strong>Al derivar</strong><span>Cuando pasa el chat a un asesor, no vuelve a responder hasta que lo marques como atendido.</span></li>
+            <li><strong>Por horario o tope</strong><span>Solo fuera de horario, solo en horario, o un máximo de respuestas por chat.</span></li>
+          </ol></div></section>
+      </div>`);
     },
     paintScope() {
       const box = document.getElementById('auBody');
@@ -175,6 +242,36 @@
     on: {
       'au-tab'(el) { this.tab = el.dataset.t; APP.$$('[data-act="au-tab"]').forEach((b) => b.setAttribute('aria-selected', b === el)); this.paintTab(); },
       'ru-new'() { this.editRule(); },
+      'ai-scope'(el) { APP.$$('#aiForm .radio-card').forEach((c) => c.classList.toggle('on', c.querySelector('input').checked)); },
+      async 'ai-key'() {
+        const v = document.getElementById('groqKey').value.trim();
+        if (!v) return APP.toast('Pega tu API key de Groq.', 'error');
+        if (await APP.try('saveSecret', { key: 'GROQ_API_KEY', value: v }, 'API key de Groq guardada.')) { await APP.loadMeta(); this.paintAI(); this.on['ai-models'].call(this); }
+      },
+      async 'ai-models'() {
+        const r = await APP.try('aiModels', {}, (x) => 'Conexión con Groq correcta: ' + x.chat.length + ' modelos disponibles.');
+        if (r) { this.aiModels = r; this.paintAI(); }
+      },
+      async 'ai-save'(form) {
+        const v = {};
+        ['AI_SCOPE'].forEach((k) => { const c = form.querySelector('input[name=' + k + ']:checked'); if (c) v[k] = c.value; });
+        ['AI_HOURS', 'AI_MAX_PER_CHAT', 'AI_NEW_GAP_HOURS', 'AI_PERSONA', 'AI_KNOWLEDGE', 'AI_HANDOFF_MESSAGE', 'AI_TAGS', 'AI_SIGN', 'AI_MODEL', 'AI_VISION_MODEL', 'AI_AUDIO_MODEL'].forEach((k) => { if (form[k]) v[k] = form[k].value; });
+        v.AI_ENABLED = form.AI_ENABLED.checked ? 'true' : 'false';
+        v.AI_CREATE_DEALS = form.AI_CREATE_DEALS.checked ? 'true' : 'false';
+        if (v.AI_ENABLED === 'true' && !((APP.meta.settings || {}).secrets || {}).GROQ_API_KEY) return APP.toast('Primero guarda tu API key de Groq.', 'error');
+        if (await APP.try('saveSettings', { values: v }, v.AI_ENABLED === 'true' ? 'Asistente IA guardado y encendido.' : 'Asistente IA guardado (apagado).')) await APP.loadMeta();
+      },
+      async 'ai-test'(form) {
+        const msg = form.message.value.trim();
+        if (!msg && !form.image_url.value.trim()) return;
+        const out = document.getElementById('aiOut');
+        out.innerHTML = '<div class="loading" style="padding:16px"><div class="spinner"></div></div>';
+        const r = await APP.try('aiTest', { message: msg, image_url: form.image_url.value.trim() });
+        if (!r) { out.innerHTML = ''; return; }
+        out.innerHTML = String(html`<div class="preview-phone"><div class="bubble"><div class="wa-text">${msg || '[imagen]'}</div></div><div class="bubble out"><div class="wa-text">${APP.wa(r.reply)}</div><div class="bubble-meta"><span class="src">IA ✨</span></div></div></div>
+          <div class="row wrap" style="margin-top:10px"><span class="pill petrol">Intención: ${r.intent || '—'}</span><span class="pill">${r.sentiment || 'neutral'}</span>${r.handoff ? html`<span class="pill lamp">Deriva a un asesor</span>` : ''}${(r.tags || []).map((t) => html`<span class="tag">${t}</span>`)}<span class="small muted">${r.model}${r.vision ? ' · vio la imagen' : ''}</span></div>
+          ${r.summary ? html`<p class="small soft" style="margin-top:6px">Resumen interno: ${r.summary}</p>` : ''}`);
+      },
       'scope-mode'(el) { document.getElementById('onlyTagsRow').hidden = el.value !== 'allowlist'; APP.$$('.radio-card').forEach((c) => c.classList.toggle('on', c.querySelector('input').checked)); },
       'go-nobot'() { APP.views.contactos.status = 'nobot'; APP.go('contactos'); },
       async 'scope-save'(form) {
@@ -232,7 +329,7 @@
     });
     return APP.raw(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Mensajes por día">${g}</svg>`);
   }
-  const SRC = { manual: 'Asesores (portal)', auto: 'Bot', campaign: 'Campañas', scheduler: 'Programados', command: 'Desde WhatsApp', 'quick-reply': 'Respuestas rápidas' };
+  const SRC = { ai: 'Asistente IA', manual: 'Asesores (portal)', auto: 'Bot', campaign: 'Campañas', scheduler: 'Programados', command: 'Desde WhatsApp', 'quick-reply': 'Respuestas rápidas' };
 
   APP.view('analitica', {
     title: 'Analítica', min: 'supervisor', days: 14,

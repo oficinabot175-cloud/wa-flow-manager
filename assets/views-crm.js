@@ -97,6 +97,7 @@
         <button class="btn btn-sm" type="button" data-act="ct-bulk" data-op="owner">${icon('assign', 'sm')}Asignar</button>
         <button class="btn btn-sm" type="button" data-act="ct-bulk" data-op="bot" data-v="off">${icon('bot', 'sm')}Sin bot</button>
         <button class="btn btn-sm" type="button" data-act="ct-bulk" data-op="bot" data-v="">Bot normal</button>
+        <button class="btn btn-sm" type="button" data-act="ct-bulk" data-op="ai" data-v="off">${icon('sparkle', 'sm')}Sin IA</button>
         <button class="btn btn-sm btn-danger" type="button" data-act="ct-bulk" data-op="dnc">No contactar</button>` : ''}
         <button class="btn btn-ghost btn-sm" type="button" data-act="ct-clear" style="margin-left:auto">Quitar selección</button></div>`) : '';
     },
@@ -169,7 +170,7 @@
         let value = 'true';
         if (op === 'add_tag' || op === 'remove_tag') { value = await APP.prompt(op === 'add_tag' ? 'Agregar etiqueta' : 'Quitar etiqueta', 'Etiqueta', '', { placeholder: 'vip', ok: op === 'add_tag' ? 'Agregar' : 'Quitar' }); if (!value) return; }
         if (op === 'owner') { value = await APP.prompt('Asignar responsable', 'Nombre del usuario', APP.state.user.name, { ok: 'Asignar' }); if (!value) return; }
-        if (op === 'bot') value = el.dataset.v;
+        if (op === 'bot' || op === 'ai') value = el.dataset.v;
         if (op === 'dnc' && !(await APP.confirm('Estos contactos dejarán de recibir campañas y respuestas automáticas.', { ok: 'Marcar No contactar', danger: true }))) return;
         const r = await APP.try('bulkContacts', { ids: Array.from(this.sel).join(','), op, value }, (x) => F.plural(x.updated, 'contacto actualizado', 'contactos actualizados') + '.');
         if (r) { this.sel.clear(); this.load(); }

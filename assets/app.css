@@ -732,3 +732,13 @@ html, body { overflow: hidden; overscroll-behavior: none; }
 
 /* Los separadores de día no se apilan arriba */
 .day-sep { position: static; }
+
+/* Asistente IA */
+.bot-state.ai { background: linear-gradient(135deg, #EDE7FF, #E3F4FF); color: #5B3FD6; }
+:root[data-theme="dark"] .bot-state.ai { background: rgba(124, 92, 255, .2); color: #B7A6FF; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bot-state.ai { background: rgba(124, 92, 255, .2); color: #B7A6FF; } }
+.composer-tools .ai-btn { color: #7B5CE6; }
+.composer-tools .ai-btn.busy { animation: aiPulse 1s ease-in-out infinite; }
+@keyframes aiPulse { 50% { opacity: .35; transform: scale(.9); } }
+.ai-card { background: linear-gradient(135deg, rgba(123, 92, 230, .08), rgba(47, 128, 237, .08)); border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.bubble.out.src-ai { background: color-mix(in srgb, var(--mint) 70%, #E9E3FF); }

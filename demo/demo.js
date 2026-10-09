@@ -65,6 +65,9 @@
     setCfg_('COMPANY_NAME', 'CISESA');
     setCfg_('BOT_NUMBER', '51943206279');
     setCfg_('PORTAL_SUBTITLE', 'WhatsApp Corporativo');
+    setProp_('GROQ_API_KEY', 'demo');
+    setCfg_('AI_ENABLED', 'true');
+    setCfg_('AI_KNOWLEDGE', 'Empresa: CISESA, distribuidor autorizado de telecomunicaciones en Lima.\nQué ofrecemos: internet de fibra óptica (100, 300 y 600 Mbps), dúo fibra + TV, portabilidad móvil postpago, renovación de equipos y chips prepago.\nPrecios que puedes decir: fibra 300 Mbps a S/ 89 al mes (promoción del mes), dúo fibra + TV a S/ 149 al mes.\nInstalación: gratis, de 24 a 72 horas según cobertura.\nHorario: lunes a sábado de 9:00 a. m. a 8:00 p. m.\nMedios de pago: Yape, Plin, transferencia y agentes.\nLo que la IA NO debe hacer: dar descuentos, confirmar fechas de instalación ni pedir datos bancarios.');
     setCfg_('WELCOME_ENABLED', 'true');
     setCfg_('WELCOME_MESSAGE', 'Hola {{first_name}}, gracias por escribir a CISESA. Un asesor te atiende en breve.');
     const sys = { name: 'demo', role: 'admin' };
@@ -253,7 +256,7 @@
             const r = webhook({ from: phone, from_name: name, message: d.message, type: 'text' });
             const res = r.result || {};
             form.closest('.overlay')._close();
-            APP.toast(res.autoReply ? 'Llegó el mensaje y el bot respondió' + (res.rule ? ' con la regla "' + res.rule + '"' : '') + '.' : res.reason === 'do_not_contact' ? 'Llegó el mensaje; el contacto pidió la baja, así que no se responde.' : 'Llegó el mensaje y quedó esperando a un asesor.', '', { long: true });
+            APP.toast(res.ai ? 'Llegó el mensaje y la IA respondió' + (res.handoff ? ' derivándolo a un asesor' : '') + (res.intent ? ' (intención: ' + res.intent + ')' : '') + '.' : res.autoReply ? 'Llegó el mensaje y el bot respondió' + (res.rule ? ' con la regla "' + res.rule + '"' : '') + '.' : res.reason === 'do_not_contact' ? 'Llegó el mensaje; el contacto pidió la baja, así que no se responde.' : 'Llegó el mensaje y quedó esperando a un asesor.', '', { long: true });
             APP.pollNow();
           }
         }

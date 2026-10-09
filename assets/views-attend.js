@@ -66,6 +66,14 @@
         </form>
         ${notes.map((n) => html`<div class="note">${n.body}<div class="meta"><span>${n.author} · ${F.ago(n.created_at)}</span><button class="icon-btn sm" type="button" data-act="pf-note-del" data-id="${n.note_id}" aria-label="Borrar nota">${icon('trash', 'sm')}</button></div></div>`)}
       </section>
+      <section class="profile-sec"><h4>Asistente IA <button class="btn btn-ghost btn-sm" type="button" data-act="pf-ai-summary">${icon('sparkle', 'sm')}Resumen</button></h4>
+        <div class="seg bot-seg" role="group" aria-label="Asistente IA en este chat">
+          ${[['', 'Automático'], ['on', 'Siempre'], ['off', 'Nunca']].map((o) => html`<button type="button" data-act="pf-ai" data-v="${o[0]}" aria-pressed="${((c && c.ai) || '') === o[0] ? 'true' : 'false'}">${o[1]}</button>`)}
+        </div>
+        ${r.ai ? html`<p class="small soft">${icon('sparkle', 'sm')} ${r.ai.text}</p>` : ''}
+        ${r.conversation && /^IA · /.test(r.conversation.summary || '') ? html`<p class="small muted">Última lectura: ${r.conversation.summary.replace(/^IA · /, '')}</p>` : ''}
+        <div id="aiSummaryBox"></div>
+      </section>
       <section class="profile-sec"><h4>Respuestas automáticas</h4>
         <div class="seg bot-seg" role="group" aria-label="Respuestas automáticas en este chat">
           ${[['', 'Automático'], ['on', 'Siempre'], ['off', 'Nunca']].map((o) => html`<button type="button" data-act="pf-bot" data-v="${o[0]}" aria-pressed="${((c && c.bot) || '') === o[0] ? 'true' : 'false'}">${o[1]}</button>`)}
@@ -92,6 +100,16 @@
     'pf-tag-add': (form) => { const t = form.t.value.trim(); if (!t) return; patchContact({ tags: mergeTags(ctx().contact && ctx().contact.tags, t) }, 'Etiqueta agregada.'); },
     'pf-tag-del': (el) => patchContact({ tags: splitTags(ctx().contact.tags).filter((t) => t !== el.dataset.t).join(', ') }, 'Etiqueta quitada.'),
     'pf-waphone': (form) => patchContact({ wa_phone: form.wa_phone.value.trim() }, form.wa_phone.value.trim() ? 'Número real guardado: los mensajes irán a ese número.' : 'Se volverá a usar el ID privado.'),
+    'pf-ai': (el) => patchContact({ ai: el.dataset.v }, { '': 'La IA sigue la configuración general en este chat.', on: 'La IA responderá siempre en este chat.', off: 'La IA no responderá en este chat.' }[el.dataset.v]),
+    'pf-ai-summary': async (el) => {
+      const box = document.getElementById('aiSummaryBox') || el.closest('.profile-sec').querySelector('#aiSummaryBox');
+      el.disabled = true;
+      if (box) box.innerHTML = '<div class="loading" style="padding:10px"><div class="spinner"></div></div>';
+      const r = await APP.try('aiSummary', { phone: ctx().phone });
+      el.disabled = false;
+      if (!box) return;
+      box.innerHTML = r ? String(html`<div class="ai-card"><p>${r.summary}</p>${r.next_step ? html`<p><strong>Siguiente paso:</strong> ${r.next_step}</p>` : ''}<div class="row wrap">${r.intent ? html`<span class="pill petrol">${r.intent}</span>` : ''}${r.sentiment ? html`<span class="pill">${r.sentiment}</span>` : ''}</div></div>`) : '';
+    },
     'pf-bot': (el) => patchContact({ bot: el.dataset.v }, { '': 'El chat sigue la regla general del bot.', on: 'El bot siempre responderá en este chat.', off: 'El bot no responderá en este chat.' }[el.dataset.v]),
     'pf-dnc': (el) => patchContact({ do_not_contact: el.checked ? 'true' : 'false' }, el.checked ? 'Marcado como No contactar.' : 'Puede volver a recibir mensajes.'),
     'pf-note': async (form) => { const body = form.body.value.trim(); if (!body) return; if (await APP.try('addNote', { phone: ctx().phone, body }, 'Nota guardada.')) reloadProfile(); },
@@ -142,7 +160,8 @@
         [h.api_key, 'TextMeBot conectado', 'Falta la API key', 'configuracion'],
         [h.triggers && h.triggers.installed && h.triggers.healthy !== false, 'Envíos automáticos activos', h.triggers && h.triggers.installed ? 'Sin actividad reciente' : 'Proceso automático apagado', 'configuracion'],
         [h.webhook_secret, 'Mensajes entrantes protegidos', 'Webhook sin clave', 'configuracion'],
-        [h.bot, 'Bot respondiendo', 'Bot apagado', 'automatizacion']
+        [h.bot, 'Bot respondiendo', 'Bot apagado', 'automatizacion'],
+        [h.ai, 'Asistente IA activo', 'Asistente IA apagado', 'automatizacion']
       ];
       this.el.innerHTML = String(html`<div class="page">
         <header class="page-head desk-head">
@@ -351,6 +370,7 @@
           ${APP.avatar(name)}
           <div class="who"><strong>${name}</strong><span>${F.phone(r.phone)} · ${APP.labels.conv[st] || st}${cv.waiting_since ? ' · esperando ' + F.wait(cv.waiting_since) : ''}</span></div>
           <span class="bot-state ${r.bot && r.bot.ok ? 'on' : 'off'}" title="${r.bot ? r.bot.text : ''}">${icon('bot', 'sm')}<span class="hide-sm">${r.bot && r.bot.ok ? 'Bot activo' : 'Bot en silencio'}</span></span>
+          ${r.ai && r.ai.ok && r.bot && r.bot.ok ? html`<span class="bot-state ai" title="${r.ai.text}">${icon('sparkle', 'sm')}<span class="hide-sm">IA</span></span>` : ''}
           <div class="chat-actions">
             ${st !== 'resolved'
               ? html`<button class="btn btn-sm" type="button" data-act="set-status" data-s="resolved" title="Sale de la lista de pendientes">${icon('check', 'sm')}<span class="hide-sm">Marcar atendida</span></button>`
@@ -376,6 +396,7 @@
             <div class="composer-tools">
               <button class="icon-btn" type="button" data-act="qr-toggle" title="Respuestas rápidas" aria-label="Respuestas rápidas">${icon('template')}</button>
               <button class="icon-btn" type="button" data-act="comp-extra" title="Adjuntar o programar" aria-label="Adjuntar o programar">${icon('clip')}</button>
+              <button class="icon-btn ai-btn" type="button" data-act="ai-suggest" title="Sugerir respuesta con IA. Si escribes una indicación (ej. «ofrécele el plan de 300 Mbps»), la IA la sigue." aria-label="Sugerir respuesta con IA">${icon('sparkle')}</button>
             </div>
             <textarea id="compText" rows="1" placeholder="Mensaje · / para respuestas rápidas" title="Enter envía · Shift + Enter, nueva línea · {{first_name}} pone el nombre del cliente" aria-label="Mensaje" data-input="comp-input" data-keydown="comp-key" ${dnc ? 'disabled' : ''}>${draft ? draft.text : ''}</textarea>
             <button class="btn btn-primary" type="button" data-act="comp-send" id="compSend" ${dnc ? 'disabled' : ''}>${icon('send')}<span class="hide-sm">Enviar</span></button>
@@ -559,6 +580,19 @@
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); this.send(); }
       },
       'comp-send'() { this.send(); },
+      async 'ai-suggest'(el) {
+        const ta = document.getElementById('compText');
+        const instruction = ta.value.trim();
+        el.classList.add('busy'); el.disabled = true;
+        const prevPh = ta.placeholder;
+        ta.placeholder = 'La IA está escribiendo…';
+        const r = await APP.try('aiSuggest', { phone: this.phone, instruction });
+        el.classList.remove('busy'); el.disabled = false; ta.placeholder = prevPh;
+        if (!r || !r.reply) return;
+        ta.value = r.reply; this.tplId = '';
+        this.autosize(); ta.focus();
+        APP.toast(r.handoff ? 'Borrador listo. La IA sugiere que lo atienda un asesor.' : 'Borrador de IA listo: revísalo antes de enviar.');
+      },
       async retry(el) {
         const m = this.chat.messages.find((x) => x.id === el.dataset.id);
         if (!m) return;

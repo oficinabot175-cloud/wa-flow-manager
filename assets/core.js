@@ -72,7 +72,7 @@
   APP.lamp = (iso, pulse) => { const m = F.waitMin(iso); return html`<span class="lamp-dot ${m >= 30 ? 'hot' : ''} ${pulse && m >= 30 ? 'pulse' : ''}" title="Esperando respuesta"></span>`; };
   APP.labels = {
     conv: { open: 'Abierta', pending: 'Pendiente', 'needs-human': 'Requiere humano', resolved: 'Atendida' },
-    source: { auto: 'Bot', campaign: 'Campaña', scheduler: 'Programado', command: 'Desde WhatsApp', 'quick-reply': 'Respuesta rápida', system: 'Sistema', 'command-reply': 'Sistema', manual: '', template: 'Plantilla' },
+    source: { ai: 'IA ✨', auto: 'Bot', campaign: 'Campaña', scheduler: 'Programado', command: 'Desde WhatsApp', 'quick-reply': 'Respuesta rápida', system: 'Sistema', 'command-reply': 'Sistema', manual: '', template: 'Plantilla' },
     role: { admin: 'Administrador', supervisor: 'Supervisor', agent: 'Asesor' },
     rec: { once: 'Una vez', daily: 'Diario', weekdays: 'Lunes a viernes', mon_sat: 'Lunes a sábado', weekly: 'Semanal', monthly: 'Mensual', every_n_days: 'Cada N días' },
     camp: { draft: 'Borrador', scheduled: 'Programada', sending: 'Enviando', paused: 'Pausada', completed: 'Terminada', cancelled: 'Cancelada' }
